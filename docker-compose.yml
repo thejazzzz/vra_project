@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: vra
+      POSTGRES_PASSWORD: vra
+      POSTGRES_DB: vra
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - vra_net
+
+  chroma:
+    image: chromadb/chroma:latest
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/
+    networks:
+      - vra_net
+
+  api:
+    build: .
+    container_name: vra_api
+    restart: always
+    depends_on:
+      - postgres
+      - chroma
+    ports:
+      - "8001:8000"
+    environment:
+      # API environment
+      APP_ENV: production
+
+      # Chroma HTTP mode (used by Version A client)
+      CHROMA_SERVER: "http://chroma:8000"
+
+      # Postgres env (you will use later)
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: vra
+      POSTGRES_PASSWORD: vra
+      POSTGRES_DB: vra
+
+    networks:
+      - vra_net
+
+volumes:
+  postgres_data:
+  chroma_data:
+
+networks:
+  vra_net:

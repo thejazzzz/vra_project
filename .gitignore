@@ -1,0 +1,54 @@
+# Virtual environments
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables
+.env
+*.env
+.env.example
+.env.local
+.env.*.local
+
+# VSCode settings
+.vscode/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker volumes (only if inside project)
+postgres_data/
+chroma_data/
+
+# Chroma local persistence (if used without docker)
+chroma/
+chroma.db/
+
+# Database test artifacts
+*.db
+*.db-journal
+
+# Node.js frontend
+node_modules/
+.next/
+out/
+
+# Python bytecode
+*$py.class
+
+# Temporary test files
+tests/temp/

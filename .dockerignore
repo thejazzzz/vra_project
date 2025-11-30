@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.DS_Store
+.git
+.gitignore
+.env
+chroma/
+postgres_data/
+node_modules/
+.env.example

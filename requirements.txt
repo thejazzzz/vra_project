@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+chromadb
+pydantic
+pytest
+requests
+python-dotenv
+sqlalchemy
+openai>=1.25.0
+langgraph>=0.0.40
+langchain>=0.2.0
+tiktoken
