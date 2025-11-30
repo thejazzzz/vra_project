@@ -1,22 +1,33 @@
+# File: services/research_service.py
 import asyncio
 from typing import Dict
+from clients.arxiv_client import search_arxiv
 from clients.chroma_client import get_client
 
-
 async def process_research_task(query: str) -> Dict:
+    client = get_client()
 
-    client = get_client()  # <-- Version A client
-    doc_id = f"q-{hash(query) % 10_000}"
-    loop = asyncio.get_running_loop()
+    # Run ArXiv query in a thread
+    papers = await asyncio.to_thread(search_arxiv, query)
 
-    # Store text
-    await loop.run_in_executor(None, client.store, doc_id, query)
+    # Store paper abstracts concurrently
+    storage_tasks = []
+    for idx, paper in enumerate(papers):
+        doc_id = f"{paper['id']}-{idx}"
+        storage_tasks.append(
+            asyncio.to_thread(client.store, doc_id, paper["summary"], paper)
+        )
 
-    # Search back
-    results = await loop.run_in_executor(None, client.search, query)
+    if storage_tasks:
+        results = await asyncio.gather(*storage_tasks, return_exceptions=True)
+        failed = [i for i, r in enumerate(results) if isinstance(r, Exception)]
+        if failed:
+            # Log or handle failures appropriately
+            pass
+
 
     return {
         "query": query,
-        "doc_id": doc_id,
-        "chroma_results": results,
+        "papers_found": len(papers),
+        "papers": papers
     }

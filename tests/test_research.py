@@ -20,4 +20,4 @@ def test_research_endpoint():
     assert r.status_code == 200
     body = r.json()
     assert body.get("status") == "success"
-    assert "query" in body.get("data", {})
+    assert body.get("data", {}).get("query") == payload["query"]

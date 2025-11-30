@@ -1,6 +1,6 @@
 # File: api/main.py
 from fastapi import FastAPI
-from api.routers import health, research, planner, analysis, reporting
+from api.routers import health, planner, research, analysis, reporting
 
 app = FastAPI(
     title="VRA - Virtual Research Assistant API",
