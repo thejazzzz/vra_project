@@ -11,24 +11,20 @@ from api.models.analysis_models import Paper
 
 logger = logging.getLogger(__name__)
 
-# Initialize client with timeout and API key validation
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise RuntimeError(
-        "OPENAI_API_KEY environment variable is not set. Set OPENAI_API_KEY to a valid OpenAI API key to enable analysis tasks."
-    )
+# Lazily initialized OpenAI client
+_client: Optional[OpenAI] = None
 
-# Initialize the OpenAI client with the provided API key and a timeout.
-# Try common constructor signatures and raise a clear error if initialization fails.
-try:
-    client = OpenAI(api_key=api_key, timeout=30.0)
-except TypeError:
-    try:
-        # Some older/newer variants may accept the api key positionally
-        client = OpenAI(api_key, timeout=30.0)
-    except Exception as e:
-        logger.error("Failed to initialize OpenAI client with provided API key", exc_info=True)
-        raise RuntimeError("Failed to initialize OpenAI client. Check the OpenAI SDK version and provided API key.") from e
+
+def _get_client() -> OpenAI:
+    """Lazily initialize the OpenAI client."""
+    global _client
+    if _client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
+        _client = OpenAI(api_key=api_key, timeout=30.0)
+    return _client
+
 
 ANALYSIS_MODEL = os.getenv(
     "OPENAI_ANALYSIS_MODEL",
@@ -36,7 +32,7 @@ ANALYSIS_MODEL = os.getenv(
 )
 
 
-def _build_context(query: str, papers: Optional[List[Dict]]) -> str:
+def _build_context(query: str, papers: Optional[List[Paper]]) -> str:
     """Formats context for LLM consumption."""
     if not papers:
         return f"User query only, no papers provided. Query: {query}"
@@ -52,7 +48,7 @@ def _build_context(query: str, papers: Optional[List[Dict]]) -> str:
         else:
             title = (getattr(paper, "title", "") or "").strip()
             summary = (getattr(paper, "summary", "") or "").strip()
-            pid = getattr(paper, "id", "")        
+            pid = getattr(paper, "id", "")
         lines.append(f"\nPaper {idx + 1}:")
         lines.append(f"ID: {pid}")
         lines.append(f"Title: {title}")
@@ -91,9 +87,8 @@ def _call_openai_for_analysis(prompt: str) -> Dict:
         "No markdown, no extra fields."
     )
 
-
     try:
-        resp = client.chat.completions.create(
+        resp = _get_client().chat.completions.create(
             model=ANALYSIS_MODEL,
             temperature=0,
             response_format={"type": "json_object"},
@@ -102,12 +97,13 @@ def _call_openai_for_analysis(prompt: str) -> Dict:
                 {"role": "user", "content": prompt},
             ],
         )
+        if not resp.choices:
+            logger.warning("OpenAI returned empty choices list")
+            return _safe_fallback("Analysis returned no results.")
         content = resp.choices[0].message.content
-
     except (APIError, APITimeoutError, RateLimitError) as e:
         logger.error(f"OpenAI API failed: {e}", exc_info=True)
         return _safe_fallback("Analysis failed due to OpenAI API error.")
-
     except Exception as e:
         logger.error(f"Unexpected error during OpenAI call: {e}", exc_info=True)
         return _safe_fallback("Unexpected analysis error occurred.")

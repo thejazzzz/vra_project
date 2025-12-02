@@ -25,7 +25,8 @@ class _ChromaClient:
             raise RuntimeError("chromadb package is missing. Install with `pip install chromadb`.")
 
         server = os.getenv("CHROMA_SERVER", "").strip()
-        # Validate server URL to avoid accidental SSRF/misconfiguration.
+
+        # Validate URL if provided
         if server:
             parsed = urllib.parse.urlparse(server)
             if parsed.scheme not in ("http", "https"):
@@ -33,73 +34,63 @@ class _ChromaClient:
             if parsed.scheme == "http":
                 logging.warning("CHROMA_SERVER is using insecure scheme http; consider using https")
 
+        self._client = None
+
         # -----------------------
-        # 1. HTTP Client (if CHROMA_SERVER is set)
+        # 1️⃣ HTTP Client if CHROMA_SERVER is set
         # -----------------------
         if server:
             HttpClient = getattr(chromadb, "HttpClient", None)
 
-            # alternative import path (older versions)
+            # older import structure fallback
             if HttpClient is None:
                 http_mod = getattr(chromadb, "http", None)
                 HttpClient = getattr(http_mod, "HttpClient", None) if http_mod else None
 
             if HttpClient:
-                # Parse the server URL to extract host and port. Some HttpClient
-                # implementations expect separate host and port arguments.
+                parsed = urllib.parse.urlparse(server)
+                host = parsed.hostname
+                port = parsed.port or (80 if parsed.scheme == "http" else 443)
+
                 try:
-                    host = parsed.hostname
-                    port = parsed.port
-                    scheme = parsed.scheme
-
-                    if not host:
-                        raise ValueError(f"Unable to parse hostname from CHROMA_SERVER='{server}'")
-
-                    # Default port based on scheme when not explicitly provided
-                    if port is None:
-                        port = 80 if scheme == "http" else 443
-
-                    # Try a variety of constructor signatures to support different
-                    # chromadb versions. Prefer keyword args first.
-                    try:
-                        self._client = HttpClient(host=host, port=port)
-                    except TypeError:
-                        # Some versions may expect positional args (host, port)
-                        try:
-                            self._client = HttpClient(host, port)
-                        except Exception:
-                            # Fallback to passing the full server URL if above fails
-                            self._client = HttpClient(host=server)
+                    self._client = HttpClient(
+                        host=host,
+                        port=port,
+                        ssl=(parsed.scheme == "https")
+                    )
                 except Exception as e:
-                    logging.error(f"Failed to initialize HttpClient from CHROMA_SERVER='{server}': {e}", exc_info=True)
-                    # Let the fallback below (Settings/Client) handle creating the client
-                    HttpClient = None
-            else:
-                # fallback: use Client(Settings)
-                if Settings:
-                    try:
+                    logging.error(f"HttpClient init failed: {e}", exc_info=True)
+
+            # If HTTP init failed → fallback to Settings
+            if self._client is None:
+                try:
+                    if Settings:
                         self._client = chromadb.Client(Settings(chroma_server=server))
-                    except Exception:
-                        self._client = chromadb.Client(Settings())
+                    else:
+                        self._client = chromadb.Client()
+                except Exception as e:
+                    logging.error(f"Settings-based client init failed: {e}", exc_info=True)
+
+        # -----------------------
+        # 2️⃣ Local Client fallback
+        # -----------------------
+        if self._client is None:
+            try:
+                if Settings:
+                    self._client = chromadb.Client(
+                        Settings(
+                            chroma_db_impl="duckdb+parquet",
+                            persist_directory="./chroma/"
+                        )
+                    )
                 else:
                     self._client = chromadb.Client()
+            except Exception as e:
+                logging.error("Failed to initialize any Chroma client", exc_info=True)
+                raise
 
         # -----------------------
-        # 2. Local Client (default)
-        # -----------------------
-        else:
-            if Settings:
-                self._client = chromadb.Client(
-                    Settings(
-                        chroma_db_impl="duckdb+parquet",
-                        persist_directory="./chroma/"
-                    )
-                )
-            else:
-                self._client = chromadb.Client()
-
-        # -----------------------
-        # 3. Collection creation
+        # 3️⃣ Create / get collection
         # -----------------------
         try:
             self._collection = self._client.get_or_create_collection("vra_data")
@@ -107,7 +98,7 @@ class _ChromaClient:
             self._collection = self._client.create_collection("vra_data")
 
     # ============================================================
-    # Public API: store + search
+    # Public API — store + search
     # ============================================================
 
     def store(self, key: str, value: Any, metadata: Optional[Dict] = None):
@@ -120,7 +111,7 @@ class _ChromaClient:
             )
         except Exception:
             # fallback for upsert-style behavior
-            self._collection.add(
+            self._collection.upsert(
                 ids=[key],
                 documents=[str(value)],
                 metadatas=[metadata] if metadata else None
@@ -140,7 +131,7 @@ class _ChromaClient:
 
 
 # -----------------------
-# Singleton-style accessor
+# Singleton accessor
 # -----------------------
 _client: Optional[_ChromaClient] = None
 _client_lock = threading.Lock()
