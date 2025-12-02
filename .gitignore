@@ -37,6 +37,8 @@ chroma_data/
 # Chroma local persistence (if used without docker)
 chroma/
 chroma.db/
+chroma_storage/
+
 
 # Database test artifacts
 *.db
