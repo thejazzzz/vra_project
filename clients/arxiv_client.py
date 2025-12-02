@@ -1,8 +1,13 @@
 # File: clients/arxiv_client.py
-import requests
-import xml.etree.ElementTree as ET
-from requests.exceptions import RequestException
 import logging
+import requests
+from requests.exceptions import RequestException
+
+# Prefer defusedxml to mitigate XXE risks when parsing untrusted XML.
+try:
+    from defusedxml import ElementTree as ET
+except ImportError:
+    import xml.etree.ElementTree as ET  # fallback (less safe)
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 
@@ -17,14 +22,12 @@ def search_arxiv(query: str, max_results: int = 5):
         response = requests.get(ARXIV_API_URL, params=params, timeout=10)
         response.raise_for_status()
     except RequestException:
-            # Log the error for observability
-            logging.exception("arXiv API request failed")
-            return []  # Network issue → return empty list
-
+        logging.exception("arXiv API request failed")
+        return []  # Network issue → return empty list
 
     try:
         root = ET.fromstring(response.text)
-    except ET.ParseError:
+    except Exception:
         logging.exception("Failed to parse arXiv API response")
         return []  # Bad XML → return empty list
 

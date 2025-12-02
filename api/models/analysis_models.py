@@ -1,6 +1,12 @@
 # File: api/models/analysis_models.py
-from pydantic import BaseModel
-from typing import List, Dict, Optional
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+
+class Paper(BaseModel):
+    id: str = Field(..., description="Unique identifier e.g., arXiv URL")
+    title: str = Field(..., description="Title of the paper")
+    summary: str = Field(..., description="Abstract or summary of the paper")
 
 
 class Relation(BaseModel):
@@ -11,9 +17,7 @@ class Relation(BaseModel):
 
 class AnalysisRequest(BaseModel):
     query: str
-    # Optional: pass in papers from research step
-    # Each paper dict is expected to have at least: id, title, summary
-    papers: Optional[List[Dict]] = None
+    papers: Optional[List[Paper]] = None
 
 
 class AnalysisResult(BaseModel):

@@ -5,6 +5,9 @@ Falls back to local DuckDB+Parquet persistence.
 """
 
 import os
+import logging
+import threading
+import urllib.parse
 from typing import Optional, Any, Dict
 
 # dynamic import to avoid IDE errors and API changes
@@ -22,6 +25,13 @@ class _ChromaClient:
             raise RuntimeError("chromadb package is missing. Install with `pip install chromadb`.")
 
         server = os.getenv("CHROMA_SERVER", "").strip()
+        # Validate server URL to avoid accidental SSRF/misconfiguration.
+        if server:
+            parsed = urllib.parse.urlparse(server)
+            if parsed.scheme not in ("http", "https"):
+                raise ValueError("CHROMA_SERVER must be a valid http(s) URL")
+            if parsed.scheme == "http":
+                logging.warning("CHROMA_SERVER is using insecure scheme http; consider using https")
 
         # -----------------------
         # 1. HTTP Client (if CHROMA_SERVER is set)
@@ -35,7 +45,35 @@ class _ChromaClient:
                 HttpClient = getattr(http_mod, "HttpClient", None) if http_mod else None
 
             if HttpClient:
-                self._client = HttpClient(host=server)
+                # Parse the server URL to extract host and port. Some HttpClient
+                # implementations expect separate host and port arguments.
+                try:
+                    host = parsed.hostname
+                    port = parsed.port
+                    scheme = parsed.scheme
+
+                    if not host:
+                        raise ValueError(f"Unable to parse hostname from CHROMA_SERVER='{server}'")
+
+                    # Default port based on scheme when not explicitly provided
+                    if port is None:
+                        port = 80 if scheme == "http" else 443
+
+                    # Try a variety of constructor signatures to support different
+                    # chromadb versions. Prefer keyword args first.
+                    try:
+                        self._client = HttpClient(host=host, port=port)
+                    except TypeError:
+                        # Some versions may expect positional args (host, port)
+                        try:
+                            self._client = HttpClient(host, port)
+                        except Exception:
+                            # Fallback to passing the full server URL if above fails
+                            self._client = HttpClient(host=server)
+                except Exception as e:
+                    logging.error(f"Failed to initialize HttpClient from CHROMA_SERVER='{server}': {e}", exc_info=True)
+                    # Let the fallback below (Settings/Client) handle creating the client
+                    HttpClient = None
             else:
                 # fallback: use Client(Settings)
                 if Settings:
@@ -105,10 +143,13 @@ class _ChromaClient:
 # Singleton-style accessor
 # -----------------------
 _client: Optional[_ChromaClient] = None
+_client_lock = threading.Lock()
 
 
 def get_client() -> _ChromaClient:
     global _client
     if _client is None:
-        _client = _ChromaClient()
+        with _client_lock:
+            if _client is None:
+                _client = _ChromaClient()
     return _client
