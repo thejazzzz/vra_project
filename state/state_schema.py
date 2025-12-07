@@ -1,22 +1,25 @@
 # File: state/state_schema.py
-from typing import TypedDict, List, Optional, Dict
+from typing import TypedDict, List, Optional, Dict, Any
 
 class VRAState(TypedDict, total=False):
     query: str
 
     # Paper data
-    collected_papers: List[Dict]
-    selected_papers: List[Dict]
-    added_papers: List[Dict]
+    collected_papers: List[Dict[str, Any]]
+    selected_papers: List[Dict[str, Any]]
+    added_papers: List[Dict[str, Any]]
 
     # Per-paper analysis
     paper_summaries: Dict[str, str]        # {paper_id: summary}
     paper_concepts: Dict[str, List[str]]   # {paper_id: [concepts]}
     paper_relations: Dict[str, List[Dict]] # {paper_id: [{relation}]}
 
+    # Global analysis (current implementation)
+    global_analysis: Dict[str, Any]
+
     # Global structures
-    knowledge_graph: Dict
-    citation_graph: Dict
+    knowledge_graph: Dict[str, Any]
+    citation_graph: Dict[str, Any]
 
     # Report
     draft_report: Optional[str]
@@ -25,3 +28,5 @@ class VRAState(TypedDict, total=False):
     current_step: str
     user_feedback: Optional[str]
 
+    # Error handling
+    error: Optional[str]

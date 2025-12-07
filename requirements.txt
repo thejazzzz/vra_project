@@ -13,6 +13,6 @@ tiktoken
 defusedxml
 sqlalchemy
 psycopg2-binary
-pymupdf
-aiohttp
-networkx
+pymupdf>=1.23.0
+aiohttp>=3.9.0
+networkx>=3.0

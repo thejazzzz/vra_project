@@ -4,14 +4,15 @@ from api.models.research_models import ResearchRequest
 from workflow import run_step
 from state.state_schema import VRAState
 import logging
-import asyncio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
 class InputValidationError(ValueError):
     """Raised when user input is invalid."""
     pass
+
 
 @router.post("/plan")
 async def plan_task(payload: ResearchRequest) -> dict:
@@ -26,9 +27,9 @@ async def plan_task(payload: ResearchRequest) -> dict:
         logger.warning(f"Validation error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Second: run sync logic in thread (could raise system errors)
+    # Second: run workflow step (async)
     try:
-        updated_state = await asyncio.to_thread(run_step, state)
+        updated_state = await run_step(state)
         return updated_state
 
     except Exception as e:

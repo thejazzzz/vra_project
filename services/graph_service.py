@@ -82,11 +82,12 @@ def build_citation_graph(papers: List[Dict]) -> Dict:
     # Add citation edges
     for p in papers:
         src = p.get("id")
+        if not src:
+            continue
         refs = p.get("references", [])
         for ref in refs:
             if ref and ref in G.nodes():  # Only connect known papers
                 G.add_edge(src, ref)
-
     logger.info(f"Citation Graph: {len(G.nodes())} nodes, {len(G.edges())} edges")
 
     return json_graph.node_link_data(G)

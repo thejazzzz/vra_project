@@ -3,11 +3,12 @@ import asyncio
 import json
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 
 from api.models.analysis_models import Paper
+from utils.sanitization import clean_text, is_nonempty_text
 
 logger = logging.getLogger(__name__)
 
@@ -32,27 +33,53 @@ ANALYSIS_MODEL = os.getenv(
 )
 
 
+def _normalize_paper(paper: Union[Paper, dict]) -> Dict[str, str]:
+    """
+    Normalize a paper object (Pydantic or dict) into a clean dict with
+    id, title, summary, all sanitized.
+    """
+    if isinstance(paper, dict):
+        pid = paper.get("id", "")
+        title = paper.get("title", "")
+        summary = paper.get("summary", "")
+    else:
+        pid = getattr(paper, "id", "")
+        title = getattr(paper, "title", "")
+        summary = getattr(paper, "summary", "")
+
+    return {
+        "id": clean_text(pid),
+        "title": clean_text(title),
+        "summary": clean_text(summary),
+    }
+
+
 def _build_context(query: str, papers: Optional[List[Paper]]) -> str:
-    """Formats context for LLM consumption."""
+    """Formats context for LLM consumption (sanitized)."""
+    clean_query = clean_text(query)
+
     if not papers:
-        return f"User query only, no papers provided. Query: {query}"
+        return f"User query only, no papers provided. Query: {clean_query}"
 
-    lines = [f"User query: {query}", "", "Relevant papers:"]
+    lines: List[str] = [f"User query: {clean_query}", "", "Relevant papers:"]
 
-    for idx, paper in enumerate(papers[:5]):  # Limit to N papers in prompt
-        # Support both dict-like and object-like paper representations
-        if isinstance(paper, dict):
-            title = (paper.get("title", "") or "").strip()
-            summary = (paper.get("summary", "") or "").strip()
-            pid = paper.get("id", "")
-        else:
-            title = (getattr(paper, "title", "") or "").strip()
-            summary = (getattr(paper, "summary", "") or "").strip()
-            pid = getattr(paper, "id", "")
-        lines.append(f"\nPaper {idx + 1}:")
-        lines.append(f"ID: {pid}")
-        lines.append(f"Title: {title}")
-        lines.append(f"Summary: {summary}")
+    # Normalize & filter papers
+    normalized: List[Dict[str, str]] = []
+    for p in papers[:5]:  # Limit to N papers in prompt
+        norm = _normalize_paper(p)
+        # Keep only if at least title or summary has real content
+        if not (is_nonempty_text(norm["title"]) or is_nonempty_text(norm["summary"])):
+            continue
+        normalized.append(norm)
+
+    if not normalized:
+        return f"User query only, no usable paper metadata. Query: {clean_query}"
+
+    for idx, paper in enumerate(normalized, start=1):
+        lines.append(f"\nPaper {idx}:")
+        lines.append(f"ID: {paper['id']}")
+        lines.append(f"Title: {paper['title']}")
+        lines.append(f"Summary: {paper['summary']}")
 
     return "\n".join(lines)
 
@@ -126,7 +153,14 @@ async def run_analysis_task(query: str, papers: Optional[List[Paper]] = None) ->
 
     # Final safeguard for malformed response
     return {
-        "summary": result.get("summary", ""),
-        "key_concepts": result.get("key_concepts", []),
-        "relations": result.get("relations", []),
+        "summary": clean_text(result.get("summary", "")),
+        "key_concepts": [
+            clean_text(c) for c in result.get("key_concepts", []) if is_nonempty_text(c)
+        ],
+        "relations": [
+            r for r in result.get("relations", [])
+            if isinstance(r, dict)
+            and is_nonempty_text(r.get("source"))
+            and is_nonempty_text(r.get("target"))
+        ],
     }

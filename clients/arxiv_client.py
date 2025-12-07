@@ -38,7 +38,9 @@ def search_arxiv(query: str, max_results: int = 5):
         title_elem = entry.find(f"{ATOM_NS}title")
         summary_elem = entry.find(f"{ATOM_NS}summary")
 
-        if not (id_elem is not None and title_elem is not None and summary_elem is not None):
+        if not (id_elem is not None and id_elem.text 
+            and title_elem is not None and title_elem.text 
+            and summary_elem is not None and summary_elem.text):
             continue
 
         # Extract PDF link
@@ -52,7 +54,7 @@ def search_arxiv(query: str, max_results: int = 5):
         authors = [
             name.text 
             for a in entry.findall(f"{ATOM_NS}author") 
-            if (name := a.find(f"{ATOM_NS}name")) is not None
+            if (name := a.find(f"{ATOM_NS}name")) is not None and name.text
         ]        
         published = entry.find(f"{ATOM_NS}published")
         published_date = published.text if published is not None else None
