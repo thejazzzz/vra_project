@@ -14,10 +14,16 @@ if not all([DB_USER, DB_PASS, DB_NAME]):
     raise ValueError("Database credentials must be provided via environment variables")
 
 
-DATABASE_URL = f"postgresql://{quote_plus(DB_USER)}:{quote_plus(DB_PASS)}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-engine = create_engine(DATABASE_URL, echo=False)
-
+DATABASE_URL = f"postgresql://{quote_plus(DB_USER)}:{quote_plus(DB_PASS)}@{DB_HOST}:{DB_PORT}/{quote_plus(DB_NAME)}"
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_pre_ping=True,
+    connect_args={"connect_timeout": 10}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

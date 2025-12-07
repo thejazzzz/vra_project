@@ -5,9 +5,9 @@ from database.db import Base
 class Paper(Base):
     __tablename__ = "papers"
 
-    id = Column(Integer, primary_key=True, index=True)
-    paper_id = Column(String(255), unique=True)
-    title = Column(String(255))
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    paper_id = Column(String(255), unique=True, nullable=False)
+    title = Column(String(255), nullable=False)
     abstract = Column(Text)
     raw_text = Column(Text, nullable=True)  # full text later
-    paper_metadata = Column(JSON, default={})  # renamed to avoid conflict
+    paper_metadata = Column(JSON, default=lambda: {})

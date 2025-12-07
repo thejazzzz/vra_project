@@ -13,3 +13,6 @@ tiktoken
 defusedxml
 sqlalchemy
 psycopg2-binary
+pymupdf
+aiohttp
+networkx

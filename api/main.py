@@ -1,32 +1,42 @@
-# File: api/main.py
-import os
-from contextlib import asynccontextmanager
-import logging
-
+# api/main.py
 from dotenv import load_dotenv
+import os
 
-# Load .env.local ONLY when not in production (i.e., not in Docker)
-if os.getenv("APP_ENV") != "production":
+# Load correct environment config
+env = os.getenv("APP_ENV", "local")
+if env == "local":
     load_dotenv(".env.local")
+else:
+    load_dotenv(".env")
+
+print(f"🔧 Loaded environment: {env}")
 
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
+import logging
 from database.db import init_db
 from api.routers import health, planner, research, analysis, reporting
 
 logger = logging.getLogger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting VRA Backend — initializing DB")
-    init_db()
+    try:
+        init_db()
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize database: {e}", exc_info=True)
+        raise
     yield
     logger.info("🛑 Shutting down VRA Backend")
+
 
 app = FastAPI(
     title="VRA - Virtual Research Assistant API",
     version="1.0.0",
     description="Backend API for the Virtual Research Assistant (VRA).",
-    lifespan=lifespan,
+    lifespan=lifespan
 )
 
 

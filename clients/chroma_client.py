@@ -1,3 +1,5 @@
+# File: clients/chroma_client.py
+
 """
 Modern, migration-safe Chroma client factory.
 Prefers remote HTTP client when CHROMA_SERVER is set.
