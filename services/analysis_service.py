@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 from typing import Dict, List, Optional, Union
 
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
@@ -12,18 +13,21 @@ from utils.sanitization import clean_text, is_nonempty_text
 
 logger = logging.getLogger(__name__)
 
-# Lazily initialized OpenAI client
+# Lazily initialized OpenAI client with thread-safe initialization
 _client: Optional[OpenAI] = None
+_client_lock = threading.Lock()
 
 
 def _get_client() -> OpenAI:
-    """Lazily initialize the OpenAI client."""
+    """Lazily initialize the OpenAI client (thread-safe)."""
     global _client
     if _client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
-        _client = OpenAI(api_key=api_key, timeout=30.0)
+        with _client_lock:
+            if _client is None:
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
+                _client = OpenAI(api_key=api_key, timeout=30.0)
     return _client
 
 
@@ -128,6 +132,9 @@ def _call_openai_for_analysis(prompt: str) -> Dict:
             logger.warning("OpenAI returned empty choices list")
             return _safe_fallback("Analysis returned no results.")
         content = resp.choices[0].message.content
+        if not content:
+            logger.warning("OpenAI returned empty message content")
+            return _safe_fallback("Analysis returned empty response.")
     except (APIError, APITimeoutError, RateLimitError) as e:
         logger.error(f"OpenAI API failed: {e}", exc_info=True)
         return _safe_fallback("Analysis failed due to OpenAI API error.")
