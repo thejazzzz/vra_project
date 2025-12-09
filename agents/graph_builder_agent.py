@@ -5,6 +5,7 @@ from typing import Dict, List, Any
 from state.state_schema import VRAState
 from services.graph_service import build_knowledge_graph, build_citation_graph
 from utils.sanitization import clean_text, is_nonempty_text
+from services.graph_persistence_service import save_graphs
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,13 @@ class GraphBuilderAgent:
         # Build Citation Graph (if user picked papers)
         selected = state.get("selected_papers") or state.get("collected_papers") or []
         state["citation_graph"] = build_citation_graph(selected)
+
+        save_graphs(
+            query=state.get("query"),
+            user_id=state.get("user_id", "demo-user"),
+            knowledge=state["knowledge_graph"],
+            citation=state["citation_graph"]
+            )
 
         # Move workflow to next HITL stage
         state["current_step"] = "awaiting_graph_review"

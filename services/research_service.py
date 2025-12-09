@@ -94,8 +94,11 @@ async def process_research_task(query: str) -> Dict:
                 "query": query,
                 "papers_found": 0,
                 "error": "Failed to fetch papers from arXiv",
+                "storage_failed": [],
+                "embedding_failed": [],
+                "db_ids": [],
+                "papers": [],
             }
-
         if not papers:
             return {
                 "success": True,
@@ -103,9 +106,9 @@ async def process_research_task(query: str) -> Dict:
                 "papers_found": 0,
                 "storage_failed": [],
                 "embedding_failed": [],
+                "db_ids": [],
                 "papers": []
             }
-
         logger.info(f"Fetched {len(papers)} papers from arXiv")
 
         # Download PDFs asynchronously

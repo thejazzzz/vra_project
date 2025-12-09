@@ -14,6 +14,9 @@ def build_knowledge_graph(
     global_analysis: Dict[str, Any] = None,
 ) -> Dict:
     """Build knowledge graph as JSON using NetworkX node-link format."""
+    if not global_analysis and not paper_relations:
+        logger.warning("No data provided to build_knowledge_graph, returning empty graph")
+        
     G = nx.DiGraph()
 
     # Global analysis concepts + relations
@@ -43,17 +46,23 @@ def build_knowledge_graph(
     )
 
     # Use json_graph instead of nx.node_link_data to satisfy Pylance
-    return json_graph.node_link_data(G, edges="edges")
+    return json_graph.node_link_data(G)
 
 
 def build_citation_graph(selected_papers: List[Dict]) -> Dict:
     """Minimal citation graph (nodes only for now)."""
+    if not selected_papers:
+        logger.warning("No papers provided to build_citation_graph, returning empty graph")
+
     G = nx.DiGraph()
     for paper in selected_papers:
         pid = paper.get("id")
         if pid:
             G.add_node(pid)
+        else:
+            logger.warning("Paper without ID skipped in citation graph")
+
 
     logger.info(f"📎 Citation Graph: {G.number_of_nodes()} paper nodes")
 
-    return json_graph.node_link_data(G, edges="edges")
+    return json_graph.node_link_data(G)

@@ -19,8 +19,7 @@ class WorkflowState(Base):
     user_id = Column(String(255), nullable=True, index=True)
 
     # Logical key for this workflow; right now one workflow per query
-    query = Column(Text, nullable=False, index=True)
-
+    query = Column(Text, nullable=False, unique=True)
     # Full VRAState stored as JSON
     state = Column(JSON, nullable=False)
 

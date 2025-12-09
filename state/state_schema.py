@@ -12,7 +12,7 @@ class VRAState(TypedDict, total=False):
     # Per-paper analysis
     paper_summaries: Dict[str, str]        # {paper_id: summary}
     paper_concepts: Dict[str, List[str]]   # {paper_id: [concepts]}
-    paper_relations: Dict[str, List[Dict]] # {paper_id: [{relation}]}
+    paper_relations: Dict[str, List[Dict[str, Any]]] # {paper_id: [{relation}]}
 
     # Global analysis (current implementation)
     global_analysis: Dict[str, Any]

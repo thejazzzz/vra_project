@@ -4,78 +4,66 @@ from api.models.research_models import ResearchRequest
 from workflow import run_step
 from state.state_schema import VRAState
 from services.state_service import load_state_for_query, save_state_for_query
+from services.research_service import process_research_task
 import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-class InputValidationError(ValueError):
-    """Raised when user input is invalid."""
-    pass
-
-
 @router.post("/plan")
 async def plan_task(payload: ResearchRequest) -> dict:
-    """
-    Planner entrypoint.
+    user_id = "demo-user"  # TODO: integrate real auth later
+    query = payload.query.strip() if payload.query else None
 
-    Behavior:
-      - Load previous state for this query from DB (if exists)
-      - Otherwise, start a new state with this query
-      - Run a single workflow step
-      - Persist updated state back to DB
-    """
+    if not query:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    # 1️⃣ Validate input
+    # 1️⃣ Load state if it exists
     try:
-        if not payload.query or not payload.query.strip():
-            raise InputValidationError("Query cannot be empty")
-
-        query = payload.query.strip()
-
-    except InputValidationError as e:
-        logger.warning(f"Validation error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-    # 2️⃣ Load saved workflow state for this query (if any)
-    try:
-        existing_state = load_state_for_query(query)
-    except Exception as e:
-        logger.error(f"Failed to load workflow state for query='{query}': {e}", exc_info=True)
-        existing_state = None
-
-    if existing_state:
-        state: VRAState = existing_state
-        logger.info(f"Resuming workflow for query='{query}' at step={state.get('current_step')}")
-    else:
+        state = load_state_for_query(query, user_id) or VRAState(query=query)
+    except Exception:
+        logger.exception("Failed to load workflow state")
         state = VRAState(query=query)
-        logger.info(f"Starting new workflow for query='{query}'")
 
-    # 3️⃣ Inject collected papers into state if research step already performed
-    # Research response structure: {"status": "...", "data": {"papers": [...]}}
-    data_block = existing_state.get("data") if existing_state else None
-    if data_block and isinstance(data_block, dict):
-        papers_list = data_block.get("papers")
-        if isinstance(papers_list, list) and papers_list:
-            state["collected_papers"] = papers_list
+    # 2️⃣ Auto-run research step if papers missing
+    if not state.get("collected_papers"):
+        logger.info("🔍 No papers found — running research collection...")
+        research_result = await process_research_task(query)
 
-    # 4️⃣ Execute one workflow step
+        if not research_result.get("success", False):
+            logger.error("Research failed")
+            raise HTTPException(status_code=500, detail="Research step failed")
+
+        papers = research_result.get("papers", [])
+        if not papers:
+            raise HTTPException(status_code=404, detail="No papers found for query")
+
+        state["collected_papers"] = papers
+        state["selected_papers"] = papers  # default behavior initially
+        state["current_step"] = "awaiting_analysis"  # ensure workflow continues
+
+        # Save state after research
+        try:
+            save_state_for_query(query, state, user_id)
+        except Exception:
+            logger.exception("Failed to persist state after research")
+
+    # 3️⃣ Execute workflow
     try:
         updated_state = await run_step(state)
-    except Exception as e:
-        logger.error(f"Error during workflow step: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="An internal error occurred during planning",
-        )
+    except Exception:
+        logger.exception("Workflow step failed")
+        raise HTTPException(status_code=500, detail="Workflow execution error")
 
-    # 5️⃣ Persist updated state
+    # 4️⃣ Persist workflow after step
     try:
-        save_state_for_query(query=query, state=updated_state)
-    except Exception as e:
-        logger.error(f"Failed to save workflow state for query='{query}': {e}", exc_info=True)
-        updated_state["error"] = "⚠ State was not persisted — workflow may not resume correctly."
+        save_state_for_query(query, updated_state, user_id)
+    except Exception:
+        logger.exception("Failed to save updated workflow state")
+        updated_state = {
+            "state": updated_state,
+            "warning": "⚠ State not persisted — workflow may not resume correctly."
+        }
 
-    # Final response
     return updated_state

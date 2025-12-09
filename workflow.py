@@ -1,6 +1,8 @@
 # File: workflow.py
 import logging
 from state.state_schema import VRAState
+import asyncio
+
 
 from agents.planner_agent import planner_agent  # currently unused but kept
 from agents.graph_builder_agent import graph_builder_agent
@@ -56,7 +58,7 @@ async def run_step(state: VRAState) -> VRAState:
     if current == "awaiting_graphs":
         logger.info("🧩 Building graphs...")
         try:
-            state = graph_builder_agent.run(state)
+            state = await asyncio.to_thread(graph_builder_agent.run, state)
             # graph_builder_agent sets current_step to "awaiting_graph_review"
         except Exception as e:
             logger.error(f"❌ Graph builder failed: {e}", exc_info=True)

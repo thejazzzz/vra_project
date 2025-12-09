@@ -1,8 +1,9 @@
 # File: services/state_service.py
+
 from typing import Optional, cast
 import logging
-
 from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import insert
 
 from database.db import SessionLocal
 from database.models.workflow_state_model import WorkflowState
@@ -15,71 +16,46 @@ def _get_db() -> Session:
     return SessionLocal()
 
 
-def load_state_for_query(query: str) -> Optional[VRAState]:
-    """
-    Load the most recent workflow state for a given query.
-    (Later you can add user_id filtering too.)
-    """
+def load_state_for_query(query: str, user_id: str) -> Optional[VRAState]:
     db = _get_db()
     try:
-        row: Optional[WorkflowState] = (
+        row = (
             db.query(WorkflowState)
             .filter(WorkflowState.query == query)
+            .filter(WorkflowState.user_id == user_id)
             .order_by(WorkflowState.id.desc())
             .first()
         )
-        if not row:
+        if not row or not isinstance(row.state, dict):
             return None
 
-        if not isinstance(row.state, dict):
-            logger.warning("WorkflowState.state is not a dict; ignoring row.")
-            return None
-
-        # cast to VRAState for type checkers
         return cast(VRAState, row.state)
+
     finally:
         db.close()
 
 
-def save_state_for_query(
-    query: str,
-    state: VRAState,
-    user_id: Optional[str] = None,
-) -> int:
-    """
-    Save (or update) the workflow state for a given query.
-
-    Current behavior:
-      - If a row exists for this query, update its state.
-      - Otherwise, create a new row.
-    """
+def save_state_for_query(query: str, state: VRAState, user_id: str) -> int:
     db = _get_db()
     try:
-        row: Optional[WorkflowState] = (
-            db.query(WorkflowState)
-            .filter(WorkflowState.query == query)
-            .order_by(WorkflowState.id.desc())
-            .first()
-        )
+        stmt = insert(WorkflowState).values(
+            query=query,
+            user_id=user_id,
+            state=dict(state)
+        ).on_conflict_do_update(
+            index_elements=["query", "user_id"],
+            set_=dict(state=dict(state))
+        ).returning(WorkflowState.id)
 
-        if row:
-            row.state = dict(state)  # JSON column accepts dict
-            if user_id is not None:
-                row.user_id = user_id
-        else:
-            row = WorkflowState(
-                query=query,
-                user_id=user_id,
-                state=dict(state),
-            )
-            db.add(row)
-
+        result = db.execute(stmt)
         db.commit()
-        db.refresh(row)
-        return row.id
+
+        return result.scalar_one()
+
     except Exception:
         db.rollback()
         logger.exception("Failed to persist workflow state.")
         raise
+
     finally:
         db.close()
