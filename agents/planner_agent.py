@@ -1,30 +1,28 @@
 # File: agents/planner_agent.py
-"""
-Rule-based Master Planner Agent (Phase 1)
-This version controls the flow without an LLM.
-Later we will replace logic with OpenAI decision-making.
-"""
-from state.state_schema import VRAState
 
+from state.state_schema import VRAState
 
 class PlannerAgent:
     def decide_next_step(self, state: VRAState) -> str:
-        if "query" not in state or not state["query"]:
-            return "awaiting_query"  # No task yet
+        current = state.get("current_step")
+        if not current:
+            return "awaiting_research_review"
 
-        # Step 1: If no papers collected
-        if not state.get("collected_papers"):
-            return "acquisition_agent"
+        # If HITL review required → STOP here
+        if current.endswith("_review"):
+            return current
 
-        # Step 2: If no analysis results yet
-        if not state.get("analysis_results"):
-            return "analysis_agent"
+        # Simplified sequential progression (skip analysis review for now)
+        transition = {
+            "awaiting_research_review": "awaiting_analysis",
+            "awaiting_analysis": "awaiting_graphs",
+            "awaiting_graphs": "awaiting_graph_review",
+            "awaiting_graph_review": "awaiting_report",
+            "awaiting_report": "awaiting_final_review",
+            "awaiting_final_review": "completed",
+        }
 
-        # Step 3: If report not yet generated
-        if not state.get("draft_report"):
-            return "report_agent"
+        return transition.get(current, "completed")
 
-        return "completed"
 
 planner_agent = PlannerAgent()
-

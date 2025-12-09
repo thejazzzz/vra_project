@@ -38,10 +38,7 @@ ANALYSIS_MODEL = os.getenv(
 
 
 def _normalize_paper(paper: Union[Paper, dict]) -> Dict[str, str]:
-    """
-    Normalize a paper object (Pydantic or dict) into a clean dict with
-    id, title, summary, all sanitized.
-    """
+    """Convert input object into a safe normalized paper representation."""
     if isinstance(paper, dict):
         pid = paper.get("id", "")
         title = paper.get("title", "")
@@ -58,26 +55,40 @@ def _normalize_paper(paper: Union[Paper, dict]) -> Dict[str, str]:
     }
 
 
+def _normalize_relation(r: dict) -> Optional[Dict[str, str]]:
+    """Normalize and validate a relation dict."""
+    if not isinstance(r, dict):
+        return None
+
+    normalized = {
+        "source": clean_text(r.get("source", "")),
+        "target": clean_text(r.get("target", "")),
+        "relation": clean_text(r.get("relation", "related_to"))
+    }
+
+    if is_nonempty_text(normalized["source"]) and is_nonempty_text(normalized["target"]):
+        return normalized
+
+    return None
+
+
 def _build_context(query: str, papers: Optional[List[Paper]]) -> str:
-    """Formats context for LLM consumption (sanitized)."""
+    """Build LLM prompt using query + truncated sanitized paper metadata."""
     clean_query = clean_text(query)
 
     if not papers:
-        return f"User query only, no papers provided. Query: {clean_query}"
+        return f"User query only; no papers provided.\nQuery: {clean_query}"
 
     lines: List[str] = [f"User query: {clean_query}", "", "Relevant papers:"]
 
-    # Normalize & filter papers
     normalized: List[Dict[str, str]] = []
-    for p in papers[:5]:  # Limit to N papers in prompt
+    for p in papers[:5]:
         norm = _normalize_paper(p)
-        # Keep only if at least title or summary has real content
-        if not (is_nonempty_text(norm["title"]) or is_nonempty_text(norm["summary"])):
-            continue
-        normalized.append(norm)
+        if is_nonempty_text(norm["title"]) or is_nonempty_text(norm["summary"]):
+            normalized.append(norm)
 
     if not normalized:
-        return f"User query only, no usable paper metadata. Query: {clean_query}"
+        return f"User query only; no usable paper metadata.\nQuery: {clean_query}"
 
     for idx, paper in enumerate(normalized, start=1):
         lines.append(f"\nPaper {idx}:")
@@ -89,7 +100,7 @@ def _build_context(query: str, papers: Optional[List[Paper]]) -> str:
 
 
 def _safe_fallback(summary: str = "") -> Dict:
-    """Fallback structure guaranteeing a valid AnalysisResult."""
+    """Fallback result structure on error or malformed model output."""
     return {
         "summary": summary or "Analysis could not be completed.",
         "key_concepts": [],
@@ -100,21 +111,21 @@ def _safe_fallback(summary: str = "") -> Dict:
 def _call_openai_for_analysis(prompt: str) -> Dict:
     """
     Performs structured analysis via OpenAI.
-    Always returns a dict with keys: summary, key_concepts, relations
+    Always returns a JSON-safe dict with required keys.
     """
     system_msg = (
         "You are an expert research analyst. "
         "Extract structured knowledge as JSON. "
         "Important: Format relations ONLY using this schema:\n"
-        "{\n"
-        "  \"summary\": string,\n"
-        "  \"key_concepts\": [string],\n"
-        "  \"relations\": [\n"
-        "    {\"source\": string, \"target\": string, \"relation\": \"related_to\"}\n"
-        "  ]\n"
-        "}\n"
-        "Relations must describe conceptual relationships between key concepts only. "
-        "Do NOT reference paper IDs in relations. "
+        "{"
+        "\"summary\": string,"
+        "\"key_concepts\": [string],"
+        "\"relations\": ["
+        "{\"source\": string, \"target\": string, \"relation\": \"related_to\"}"
+        "]"
+        "}"
+        "Relations must be between conceptual terms ONLY. "
+        "Do NOT reference paper IDs. "
         "No markdown, no extra fields."
     )
 
@@ -128,46 +139,42 @@ def _call_openai_for_analysis(prompt: str) -> Dict:
                 {"role": "user", "content": prompt},
             ],
         )
-        if not resp.choices:
-            logger.warning("OpenAI returned empty choices list")
-            return _safe_fallback("Analysis returned no results.")
-        content = resp.choices[0].message.content
+        content = resp.choices[0].message.content if resp.choices else None
+
         if not content:
             logger.warning("OpenAI returned empty message content")
-            return _safe_fallback("Analysis returned empty response.")
+            return _safe_fallback("No analysis output received.")
+
     except (APIError, APITimeoutError, RateLimitError) as e:
         logger.error(f"OpenAI API failed: {e}", exc_info=True)
-        return _safe_fallback("Analysis failed due to OpenAI API error.")
+        return _safe_fallback("Analysis failed due to OpenAI API timeout/api issue.")
+
     except Exception as e:
         logger.error(f"Unexpected error during OpenAI call: {e}", exc_info=True)
-        return _safe_fallback("Unexpected analysis error occurred.")
+        return _safe_fallback("Unexpected error occurred during analysis.")
 
-    # Parse JSON safely
     try:
         return json.loads(content)
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON parse error in OpenAI response: {e}", exc_info=True)
+    except json.JSONDecodeError:
+        logger.error("Invalid JSON returned by model", exc_info=True)
         return _safe_fallback(content)
 
 
 async def run_analysis_task(query: str, papers: Optional[List[Paper]] = None) -> Dict:
-    """
-    Executes structured multi-document analysis asynchronously.
-    """
+    """Asynchronously run global document analysis and post-normalize result."""
     context = _build_context(query, papers)
-
     result = await asyncio.to_thread(_call_openai_for_analysis, context)
 
-    # Final safeguard for malformed response
     return {
         "summary": clean_text(result.get("summary", "")),
         "key_concepts": [
-            clean_text(c) for c in result.get("key_concepts", []) if is_nonempty_text(c)
+            clean_text(c)
+            for c in result.get("key_concepts", [])
+            if is_nonempty_text(clean_text(c))
         ],
         "relations": [
-            r for r in result.get("relations", [])
-            if isinstance(r, dict)
-            and is_nonempty_text(r.get("source"))
-            and is_nonempty_text(r.get("target"))
+            norm
+            for r in result.get("relations", [])
+            if (norm := _normalize_relation(r)) is not None
         ],
     }

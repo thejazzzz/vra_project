@@ -1,21 +1,25 @@
 # File: utils/sanitization.py
 from typing import Optional
+import re
+
+CONTROL_CHARS = r"[\x00-\x1f\x7f-\x9f]"
 
 
 def clean_text(value: Optional[str]) -> str:
     """
     Normalize a text field:
     - Handle None safely
-    - Strip NULL/control chars
+    - Strip all ASCII control characters
     - Strip leading/trailing whitespace
     """
     if value is None:
         return ""
-    # Remove common NULL chars
-    text = value.replace("\x00", "").replace("\u0000", "")
+
+    # Remove control characters (includes NULL \x00)
+    text = re.sub(CONTROL_CHARS, "", value)
+
     # Strip whitespace
-    text = text.strip()
-    return text
+    return text.strip()
 
 
 def is_nonempty_text(value: Optional[str]) -> bool:

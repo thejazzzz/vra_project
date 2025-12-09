@@ -16,6 +16,7 @@ def build_knowledge_graph(
     """Build knowledge graph as JSON using NetworkX node-link format."""
     if not global_analysis and not paper_relations:
         logger.warning("No data provided to build_knowledge_graph, returning empty graph")
+        return json_graph.node_link_data(nx.DiGraph())
         
     G = nx.DiGraph()
 
@@ -53,6 +54,8 @@ def build_citation_graph(selected_papers: List[Dict]) -> Dict:
     """Minimal citation graph (nodes only for now)."""
     if not selected_papers:
         logger.warning("No papers provided to build_citation_graph, returning empty graph")
+        return json_graph.node_link_data(nx.DiGraph())
+
 
     G = nx.DiGraph()
     for paper in selected_papers:

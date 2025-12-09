@@ -6,9 +6,9 @@ class Graph(Base):
     __tablename__ = "graphs"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    query = Column(String, nullable=False)
-    user_id = Column(String(255), nullable=False)
-    
+    query = Column(String(1000), nullable=False, index=True)
+    user_id = Column(String(255), nullable=False, index=True)
+
     knowledge_graph = Column(JSON, nullable=True)
     citation_graph = Column(JSON, nullable=True)
 

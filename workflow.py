@@ -3,8 +3,6 @@ import logging
 from state.state_schema import VRAState
 import asyncio
 
-
-from agents.planner_agent import planner_agent  # currently unused but kept
 from agents.graph_builder_agent import graph_builder_agent
 from services.analysis_service import run_analysis_task
 
@@ -18,13 +16,13 @@ async def run_step(state: VRAState) -> VRAState:
     """
 
     current = state.get("current_step")
-    logger.info(f"🔄 Workflow run step: {current}")
+    logger.info(f"🔄 Workflow step: {current}")
 
     # =============================================================
-    # STEP 1: Initial query complete → move to analysis
+    # STEP 1: Human reviewed research -> move to analysis
     # =============================================================
-    if not current or current == "awaiting_query":
-        state["selected_papers"] = state.get("collected_papers", [])
+    if current == "awaiting_research_review":
+        logger.info("📌 Research review complete → Next: Analysis")
         state["current_step"] = "awaiting_analysis"
         return state
 
@@ -33,58 +31,68 @@ async def run_step(state: VRAState) -> VRAState:
     # =============================================================
     if current == "awaiting_analysis":
         query = state.get("query", "")
-        papers = state.get("selected_papers", [])
+        papers = state.get("selected_papers") or []
 
         if not query or not papers:
-            logger.error("❌ Missing query or selected papers for analysis.")
-            state["error"] = "Missing input for analysis step"
+            state["error"] = "Missing query or papers for analysis"
+            logger.error(state["error"])
             state["current_step"] = "completed"
             return state
 
-        logger.info("🧠 Running global analysis...")
+        logger.info("🧠 Running analysis step...")
         try:
             result = await run_analysis_task(query, papers)
             state["global_analysis"] = result
             state["current_step"] = "awaiting_graphs"
         except Exception as e:
-            logger.error(f"❌ Global analysis failed: {e}", exc_info=True)
-            state["error"] = f"Analysis failed: {str(e)}"
+            logger.error(f"Analysis failed: {e}", exc_info=True)
+            state["error"] = "Analysis step failed"
             state["current_step"] = "completed"
+
         return state
 
     # =============================================================
-    # STEP 3: Graph Builder Agent
+    # STEP 3: Build Knowledge + Citation Graphs
     # =============================================================
     if current == "awaiting_graphs":
-        logger.info("🧩 Building graphs...")
+        logger.info("🔗 Building graphs...")
         try:
             state = await asyncio.to_thread(graph_builder_agent.run, state)
-            # graph_builder_agent sets current_step to "awaiting_graph_review"
+            # Agent sets: awaiting_graph_review
+            if state.get("current_step") == "awaiting_graphs":
+                logger.error("Agent failed to advance state from awaiting_graphs")
+                state["error"] = "Graph builder agent did not advance workflow state"
+                state["current_step"] = "completed"
+
         except Exception as e:
-            logger.error(f"❌ Graph builder failed: {e}", exc_info=True)
-            state["error"] = f"Graph build failed: {str(e)}"
+            logger.error(f"Graph build failed: {e}", exc_info=True)
+            state["error"] = "Graph build failed"
             state["current_step"] = "completed"
         return state
 
     # =============================================================
-    # STEP 4: Human Review
+    # STEP 4: Wait for user to review graphs
     # =============================================================
     if current == "awaiting_graph_review":
-        logger.info("⏸ Awaiting graph & analysis review...")
+        logger.info("⏸ Awaiting graph review...")
         return state
 
     # =============================================================
-    # STEP 5: Placeholder Report Generation
+    # STEP 5: Generate Report
     # =============================================================
     if current == "awaiting_report":
+        logger.info("📝 Generating report (placeholder)")
         state["draft_report"] = "Report generation coming soon..."
-        state["current_step"] = "awaiting_report_review"
+        state["current_step"] = "awaiting_final_review"
         return state
 
-    if current == "awaiting_report_review":
-        logger.info("⏸ Awaiting report review...")
+    # =============================================================
+    # STEP 6: Wait for final review
+    # =============================================================
+    if current == "awaiting_final_review":
+        logger.info("⏸ Awaiting final review...")
         return state
 
-    # FINAL STATE
+    # FINAL FALLBACK
     state["current_step"] = "completed"
     return state

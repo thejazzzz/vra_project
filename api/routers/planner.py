@@ -1,69 +1,69 @@
 # File: api/routers/planner.py
 from fastapi import APIRouter, HTTPException
 from api.models.research_models import ResearchRequest
-from workflow import run_step
 from state.state_schema import VRAState
 from services.state_service import load_state_for_query, save_state_for_query
 from services.research_service import process_research_task
+from agents.planner_agent import planner_agent
+from workflow import run_step
 import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+USER_ID = "demo-user"
+
+
+def _load_or_create_state(query: str):
+    state = load_state_for_query(query, USER_ID)
+    return state or VRAState(query=query)
 
 
 @router.post("/plan")
-async def plan_task(payload: ResearchRequest) -> dict:
-    user_id = "demo-user"  # TODO: integrate real auth later
-    query = payload.query.strip() if payload.query else None
-
+async def plan_task(payload: ResearchRequest):
+    query = payload.query.strip()
     if not query:
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
+        raise HTTPException(status_code=400, detail="Query required")
 
-    # 1️⃣ Load state if it exists
-    try:
-        state = load_state_for_query(query, user_id) or VRAState(query=query)
-    except Exception:
-        logger.exception("Failed to load workflow state")
-        state = VRAState(query=query)
+    state = _load_or_create_state(query)
 
-    # 2️⃣ Auto-run research step if papers missing
     if not state.get("collected_papers"):
-        logger.info("🔍 No papers found — running research collection...")
-        research_result = await process_research_task(query)
+        result = await process_research_task(query)
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail="Paper search failed")
 
-        if not research_result.get("success", False):
-            logger.error("Research failed")
-            raise HTTPException(status_code=500, detail="Research step failed")
+        state["collected_papers"] = result["papers"]
+        state["selected_papers"] = result["papers"]
+        state["current_step"] = "awaiting_research_review"
 
-        papers = research_result.get("papers", [])
-        if not papers:
-            raise HTTPException(status_code=404, detail="No papers found for query")
+        save_state_for_query(query, state, USER_ID)
+    
+    return {"state": state}
 
-        state["collected_papers"] = papers
-        state["selected_papers"] = papers  # default behavior initially
-        state["current_step"] = "awaiting_analysis"  # ensure workflow continues
 
-        # Save state after research
-        try:
-            save_state_for_query(query, state, user_id)
-        except Exception:
-            logger.exception("Failed to persist state after research")
+@router.post("/continue")
+async def continue_workflow(payload: ResearchRequest):
+    query = payload.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Query required")
 
-    # 3️⃣ Execute workflow
+    state = _load_or_create_state(query)
+
+    if not state.get("collected_papers"):
+        raise HTTPException(
+            status_code=400,
+            detail="No state initialized. Call /plan first."
+        )
+
     try:
-        updated_state = await run_step(state)
-    except Exception:
-        logger.exception("Workflow step failed")
-        raise HTTPException(status_code=500, detail="Workflow execution error")
+        next_step = planner_agent.decide_next_step(state)
+        state["current_step"] = next_step
+        updated = await run_step(state)
+        save_state_for_query(query, updated, USER_ID)
+        return {"state": updated}
 
-    # 4️⃣ Persist workflow after step
-    try:
-        save_state_for_query(query, updated_state, user_id)
-    except Exception:
-        logger.exception("Failed to save updated workflow state")
-        updated_state = {
-            "state": updated_state,
-            "warning": "⚠ State not persisted — workflow may not resume correctly."
-        }
-
-    return updated_state
+    except Exception as e:
+        logger.error("Workflow continuation failed", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Workflow execution failed: {str(e)}"
+        )

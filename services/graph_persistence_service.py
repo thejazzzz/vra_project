@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from database.db import SessionLocal
 from database.models.graph_model import Graph
+from typing import Optional, Dict
 
 def save_graphs(query: str, user_id: str, knowledge: dict, citation: dict):
     db: Session = SessionLocal()
@@ -21,11 +22,14 @@ def save_graphs(query: str, user_id: str, knowledge: dict, citation: dict):
         )
         db.execute(stmt)
         db.commit()
+    except Exception:
+            db.rollback()
+            raise
     finally:
         db.close()
 
 
-def load_graphs(query: str, user_id: str) -> dict | None:
+def load_graphs(query: str, user_id: str) -> Optional[Dict]:
     db: Session = SessionLocal()
     try:
         row = db.query(Graph).filter(Graph.query == query).filter(Graph.user_id == user_id).first()
