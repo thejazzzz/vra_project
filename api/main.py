@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 import logging
 from database.db import init_db
 from api.routers import health, planner, research, analysis, reporting
-from api.routers import graphs
+from api.routers import graphs,graph_viewer
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,7 @@ app.include_router(research.router, prefix="/research", tags=["Research Agent"])
 app.include_router(analysis.router, prefix="/analysis", tags=["Analysis Agent"])
 app.include_router(reporting.router, prefix="/reporting", tags=["Reporting Agent"])
 app.include_router(graphs.router, prefix="/graphs", tags=["Graphs"])
+app.include_router(graph_viewer.router, prefix="/graph-viewer", tags=["Graph Viewer"])
 
 
 @app.get("/")

@@ -2,14 +2,14 @@
 from typing import Optional
 import re
 
-CONTROL_CHARS = r"[\x00-\x1f\x7f-\x9f]"
+CONTROL_CHARS = r"[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f]"
 
 
 def clean_text(value: Optional[str]) -> str:
     """
     Normalize a text field:
     - Handle None safely
-    - Strip all ASCII control characters
+    - Strip ASCII control characters (preserves tab, line feed, and carriage return)
     - Strip leading/trailing whitespace
     """
     if value is None:
@@ -20,7 +20,6 @@ def clean_text(value: Optional[str]) -> str:
 
     # Strip whitespace
     return text.strip()
-
 
 def is_nonempty_text(value: Optional[str]) -> bool:
     """

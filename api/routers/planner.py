@@ -20,29 +20,35 @@ def _load_or_create_state(query: str):
 
 @router.post("/plan")
 async def plan_task(payload: ResearchRequest):
-    query = payload.query.strip()
+    query = (payload.query or "").strip()
     if not query:
         raise HTTPException(status_code=400, detail="Query required")
-
     state = _load_or_create_state(query)
 
     if not state.get("collected_papers"):
-        result = await process_research_task(query)
-        if not result.get("success"):
+        try:
+            result = await process_research_task(query)
+            if not result.get("success"):
+                raise HTTPException(status_code=500, detail="Paper search failed")
+
+            state["collected_papers"] = result["papers"]
+            state["selected_papers"] = result["papers"].copy()
+            state["current_step"] = "awaiting_research_review"
+
+            save_state_for_query(query, state, USER_ID)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.error("Research task failed", exc_info=True)
             raise HTTPException(status_code=500, detail="Paper search failed")
 
-        state["collected_papers"] = result["papers"]
-        state["selected_papers"] = result["papers"]
-        state["current_step"] = "awaiting_research_review"
-
-        save_state_for_query(query, state, USER_ID)
     
     return {"state": state}
 
 
 @router.post("/continue")
 async def continue_workflow(payload: ResearchRequest):
-    query = payload.query.strip()
+    query = (payload.query or "").strip()
     if not query:
         raise HTTPException(status_code=400, detail="Query required")
 

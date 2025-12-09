@@ -48,9 +48,7 @@ async def run_step(state: VRAState) -> VRAState:
             logger.error(f"Analysis failed: {e}", exc_info=True)
             state["error"] = "Analysis step failed"
             state["current_step"] = "completed"
-
-        return state
-
+        return state    
     # =============================================================
     # STEP 3: Build Knowledge + Citation Graphs
     # =============================================================
