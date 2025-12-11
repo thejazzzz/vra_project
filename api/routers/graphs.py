@@ -16,7 +16,8 @@ async def get_graphs(query: str):
         graphs = await asyncio.to_thread(load_graphs, query, user_id)
     except Exception as e:
         # Log the full error for debugging
-        logger.exception(f"Error loading graphs for query={query}")
+        # Avoid logging PII (user_id, query)
+        logger.error("Error loading graphs", exc_info=True)
         raise HTTPException(status_code=500, detail="Error loading graphs")    
 
     # Distinguish "not found" (None) from "empty result"
