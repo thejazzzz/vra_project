@@ -1,9 +1,8 @@
-# File: clients/arxiv_client.py
+# clients/arxiv_client.py
 import logging
 import requests
 from requests.exceptions import RequestException
 
-# Prefer defusedxml to mitigate XXE risks when parsing untrusted XML.
 try:
     from defusedxml import ElementTree as ET
 except ImportError:
@@ -11,6 +10,7 @@ except ImportError:
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
+
 
 def search_arxiv(query: str, max_results: int = 5):
     params = {
@@ -38,10 +38,15 @@ def search_arxiv(query: str, max_results: int = 5):
         title_elem = entry.find(f"{ATOM_NS}title")
         summary_elem = entry.find(f"{ATOM_NS}summary")
 
-        if not (id_elem is not None and id_elem.text and id_elem.text.strip()
-            and title_elem is not None and title_elem.text and title_elem.text.strip()
-            and summary_elem is not None and summary_elem.text and summary_elem.text.strip()):
+        if not (
+            id_elem is not None and id_elem.text and
+            title_elem is not None and title_elem.text and
+            summary_elem is not None and summary_elem.text):
+            
             continue
+
+        title = " ".join(title_elem.text.split())
+        summary = " ".join(summary_elem.text.split())
 
         # Extract PDF link
         pdf_url = None
@@ -50,19 +55,21 @@ def search_arxiv(query: str, max_results: int = 5):
                 pdf_url = link.get("href")
                 break
 
-        # Additional metadata
+        # Authors
         authors = [
-            name.text 
-            for a in entry.findall(f"{ATOM_NS}author") 
+            name.text
+            for a in entry.findall(f"{ATOM_NS}author")
             if (name := a.find(f"{ATOM_NS}name")) is not None and name.text
-        ]        
+        ]
+
+        # Published date
         published = entry.find(f"{ATOM_NS}published")
         published_date = published.text if published is not None else None
 
         papers.append({
             "id": id_elem.text,
-            "title": title_elem.text.strip(),
-            "summary": summary_elem.text.strip(),
+            "title": title,
+            "summary": summary,
             "pdf_url": pdf_url,
             "authors": authors,
             "published": published_date

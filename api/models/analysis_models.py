@@ -1,12 +1,12 @@
-# File: api/models/analysis_models.py
+# api/models/analysis_models.py
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
 
 class Paper(BaseModel):
-    id: str = Field(..., description="Unique identifier e.g., arXiv URL")
-    title: str = Field(..., description="Title of the paper")
-    summary: str = Field(..., description="Abstract or summary of the paper")
+    id: str = Field(..., description="Canonical paper identifier (e.g., arxiv:2306.11113)")
+    title: str = Field(..., description="Cleaned title of the paper")
+    summary: str = Field("", description="Abstract or summary of the paper")
 
 
 class Relation(BaseModel):

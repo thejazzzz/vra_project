@@ -1,18 +1,17 @@
-# File: database/db.py
+# database/db.py
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from urllib.parse import quote_plus
-
 
 DB_USER = os.getenv("POSTGRES_USER")
 DB_PASS = os.getenv("POSTGRES_PASSWORD")
 DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
 DB_PORT = os.getenv("POSTGRES_PORT", "5432")
 DB_NAME = os.getenv("POSTGRES_DB")
+
 if not all([DB_USER, DB_PASS, DB_NAME]):
     raise ValueError("Database credentials must be provided via environment variables")
-
 
 DATABASE_URL = (
     f"postgresql://{quote_plus(DB_USER)}:{quote_plus(DB_PASS)}@"
@@ -26,16 +25,23 @@ engine = create_engine(
     max_overflow=10,
     pool_timeout=30,
     pool_pre_ping=True,
+    future=True,    # Recommended for SQLAlchemy 2.x
     connect_args={"connect_timeout": 10},
 )
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
 
 Base = declarative_base()
 
 
 def init_db():
-    # Import all models that need tables
+    # Import all models so tables are created
     from database.models.paper_model import Paper
     from database.models.workflow_state_model import WorkflowState
+    from database.models.graph_model import Graph  # <-- REQUIRED
 
     Base.metadata.create_all(bind=engine)

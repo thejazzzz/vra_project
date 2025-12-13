@@ -1,8 +1,8 @@
-# File: clients/semantic_scholar_client.py
+# clients/semantic_scholar_client.py
 import logging
 import os
 import requests
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -16,27 +16,20 @@ S2_FIELDS = [
     "url",
 ]
 
-API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")  # optional but recommended
+API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 
 
 def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
-    """
-    Searches Semantic Scholar for papers matching the query.
-
-    Returns a list of dicts matching the NormalizedPaper structure.
-    """
     params = {
         "query": query,
         "limit": limit,
         "fields": ",".join(S2_FIELDS),
     }
 
-    headers = {}
-    if API_KEY:
-        headers["x-api-key"] = API_KEY
+    headers = {"x-api-key": API_KEY} if API_KEY else {}
 
     try:
-        resp = requests.get(S2_API_URL, params=params, headers=headers, timeout=10)
+        resp = requests.get(S2_API_URL, params=params, headers=headers, timeout=12)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
@@ -44,7 +37,7 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
         return []
 
     results = data.get("data", [])
-    papers: List[Dict] = []
+    papers = []
 
     for p in results:
         paper_id = p.get("paperId")
@@ -53,17 +46,23 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
 
         title = (p.get("title") or "").strip()
         abstract = (p.get("abstract") or "").strip()
-        authors = [a.get("name") for a in p.get("authors", []) if a.get("name")]
 
-        # Construct PDF URL if available
+        authors_raw = p.get("authors") or []
+        authors = [
+            a.get("name").strip()
+            for a in authors_raw
+            if a and a.get("name")
+        ]
+
+        # PDF URL (ArXiv only)
         pdf_url = None
-        ext_ids = p.get("externalIds", {})
-        if "ArXiv" in ext_ids:
+        ext_ids = p.get("externalIds") or {}
+        if ext_ids.get("ArXiv"):
             pdf_url = f"https://arxiv.org/pdf/{ext_ids['ArXiv']}.pdf"
 
         papers.append({
             "source": "semantic_scholar",
-            "paper_id": paper_id,                 # stable S2 ID
+            "paper_id": paper_id,
             "title": title,
             "abstract": abstract,
             "authors": authors,

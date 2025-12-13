@@ -1,9 +1,9 @@
-# File: services/graph_service.py
+# services/graph_service.py
 import logging
 from typing import Dict, List, Any
 
 import networkx as nx
-from networkx.readwrite import json_graph  # <– use this version
+from networkx.readwrite import json_graph
 
 logger = logging.getLogger(__name__)
 
@@ -13,59 +13,42 @@ def build_knowledge_graph(
     paper_concepts: Dict[str, List[str]] = None,
     global_analysis: Dict[str, Any] = None,
 ) -> Dict:
-    """Build knowledge graph as JSON using NetworkX node-link format."""
-    if not global_analysis and not paper_relations:
-        logger.warning("No data provided to build_knowledge_graph, returning empty graph")
-        return json_graph.node_link_data(nx.DiGraph())
-        
     G = nx.DiGraph()
 
-    # Global analysis concepts + relations
+    # Global concepts
     if global_analysis:
         for c in global_analysis.get("key_concepts", []):
-            G.add_node(c)
+            G.add_node(c, type="concept")
 
         for rel in global_analysis.get("relations", []):
             src = rel.get("source")
             tgt = rel.get("target")
-            label = rel.get("relation", "related_to")
             if src and tgt:
-                G.add_edge(src, tgt, relation=label)
+                G.add_edge(src, tgt, relation=rel.get("relation", "related_to"))
 
-    # Paper-level relations (future expansion)
+    # Paper-level relations
     if paper_relations:
-        for pid, relations in paper_relations.items():
+        for _, relations in paper_relations.items():
             for rel in relations:
                 src = rel.get("source")
                 tgt = rel.get("target")
-                label = rel.get("relation", "related_to")
                 if src and tgt:
-                    G.add_edge(src, tgt, relation=label)
+                    G.add_edge(src, tgt, relation=rel.get("relation", "related_to"))
 
-    logger.info(
-        f"🧠 Knowledge Graph built: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
-    )
-
-    # Use json_graph instead of nx.node_link_data to satisfy Pylance
+    logger.info(f"🧠 Knowledge Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
     return json_graph.node_link_data(G)
 
 
 def build_citation_graph(selected_papers: List[Dict]) -> Dict:
-    """Minimal citation graph (nodes only for now)."""
-    if not selected_papers:
-        logger.warning("No papers provided to build_citation_graph, returning empty graph")
-        return json_graph.node_link_data(nx.DiGraph())
-
-
     G = nx.DiGraph()
-    for paper in selected_papers:
-        pid = paper.get("id")
-        if pid:
-            G.add_node(pid)
-        else:
-            logger.warning("Paper without ID skipped in citation graph")
 
+    for p in selected_papers:
+        cid = p.get("canonical_id")
+        if not cid:
+            logger.warning("Skipping paper missing canonical_id in citation graph")
+            continue
 
-    logger.info(f"📎 Citation Graph: {G.number_of_nodes()} paper nodes")
+        G.add_node(cid, type="paper")
 
+    logger.info(f"📎 Citation Graph nodes = {G.number_of_nodes()}")
     return json_graph.node_link_data(G)

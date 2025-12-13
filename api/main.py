@@ -2,7 +2,6 @@
 from dotenv import load_dotenv
 import os
 
-# Load correct environment config
 env = os.getenv("APP_ENV", "local")
 if env == "local":
     load_dotenv(".env.local")
@@ -15,8 +14,16 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import logging
 from database.db import init_db
-from api.routers import health, planner, research, analysis, reporting
-from api.routers import graphs,graph_viewer
+
+from api.routers import (
+    health,
+    planner,
+    research,
+    analysis,
+    reporting,
+    graphs,
+    graph_viewer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +47,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-
-# Register routers
 app.include_router(health.router)
 app.include_router(planner.router, prefix="/planner", tags=["Planner Agent"])
 app.include_router(research.router, prefix="/research", tags=["Research Agent"])
