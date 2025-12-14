@@ -8,13 +8,13 @@ from typing import Dict, List, Optional, Union
 
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 
-from api.models.analysis_models import Paper   # Pydantic Paper model (not DB model)
+from api.models.analysis_models import Paper
 from utils.sanitization import clean_text, is_nonempty_text
 
 logger = logging.getLogger(__name__)
 
 # ============================================================
-#  OpenAI Client (Thread-Safe Singleton)
+#  OpenAI Client Singleton
 # ============================================================
 
 _client: Optional[OpenAI] = None
@@ -22,16 +22,13 @@ _client_lock = threading.Lock()
 
 
 def _get_client() -> OpenAI:
-    """
-    Lazily initialize OpenAI client — thread safe.
-    """
     global _client
     if _client is None:
         with _client_lock:
             if _client is None:
                 api_key = os.getenv("OPENAI_API_KEY")
                 if not api_key:
-                    raise RuntimeError("OPENAI_API_KEY environment variable is NOT set!")
+                    raise RuntimeError("OPENAI_API_KEY is missing")
 
                 _client = OpenAI(api_key=api_key, timeout=30.0)
 
@@ -43,30 +40,23 @@ ANALYSIS_MODEL = os.getenv(
     os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 )
 
+
 # ============================================================
-#  NORMALIZATION HELPERS
+#  Normalization Helpers
 # ============================================================
 
-def _normalize_paper(paper: Union[Paper, dict]) -> Dict[str, str]:
-    """
-    Normalizes both ORM/Pydantic Paper objects and dict-based papers.
-    Ensures consistent fields for LLM prompt building.
-    """
+def _normalize_paper(p: Union[Paper, dict]) -> Dict[str, str]:
+    """Normalize both dict-based and Pydantic papers."""
 
-    if isinstance(paper, dict):
-        pid = (
-            paper.get("canonical_id")
-            or paper.get("id")
-            or paper.get("paper_id")
-            or ""
-        )
-        title = paper.get("title", "")
-        summary = paper.get("summary", "")
+    if isinstance(p, dict):
+        pid = p.get("canonical_id") or p.get("id") or p.get("paper_id") or ""
+        title = p.get("title", "")
+        summary = p.get("summary", "")
     else:
-        # Pydantic object (api/models/analysis_models.Paper)
-        pid = getattr(paper, "canonical_id", "") or getattr(paper, "id", "")
-        title = getattr(paper, "title", "")
-        summary = getattr(paper, "summary", "")
+        # Pydantic Paper model only has id/title/summary
+        pid = p.id
+        title = p.title
+        summary = p.summary
 
     return {
         "id": clean_text(pid),
@@ -76,95 +66,75 @@ def _normalize_paper(paper: Union[Paper, dict]) -> Dict[str, str]:
 
 
 def _normalize_relation(r: dict) -> Optional[Dict[str, str]]:
-    """
-    Ensures relation objects have valid sanitized fields.
-    """
     if not isinstance(r, dict):
         return None
 
-    normalized = {
-        "source": clean_text(r.get("source", "")),
-        "target": clean_text(r.get("target", "")),
-        "relation": clean_text(r.get("relation", "related_to")),
-    }
+    src = clean_text(r.get("source", ""))
+    tgt = clean_text(r.get("target", ""))
+    rel = clean_text(r.get("relation", "related_to"))
 
-    if is_nonempty_text(normalized["source"]) and is_nonempty_text(normalized["target"]):
-        return normalized
+    if not (src and tgt):
+        return None
 
-    return None
+    return {"source": src, "target": tgt, "relation": rel}
 
 
 # ============================================================
-#  LLM PROMPT CONTEXT BUILDER
+#  Prompt Build
 # ============================================================
 
-def _build_context(
-    query: str,
-    papers: Optional[List[Union[Paper, dict]]]
-) -> str:
-    """
-    Builds structured prompt for global analysis.
-    """
-    clean_query = clean_text(query)
+def _build_context(query: str, papers: Optional[List[Union[Paper, dict]]]) -> str:
+    q = clean_text(query)
 
     if not papers:
-        return f"User query only; no papers available.\nQuery: {clean_query}"
+        return f"User query only.\nQuery: {q}"
 
-    lines: List[str] = [f"User query: {clean_query}", "", "Relevant papers:"]
-
-    normalized: List[Dict[str, str]] = []
-    for p in papers[:5]:  # limit context to keep prompt compact
+    items = []
+    for p in papers[:5]:
         norm = _normalize_paper(p)
         if is_nonempty_text(norm["title"]) or is_nonempty_text(norm["summary"]):
-            normalized.append(norm)
+            items.append(norm)
 
-    if not normalized:
-        return f"No valid paper metadata available.\nQuery: {clean_query}"
+    if not items:
+        return f"No usable paper metadata.\nQuery: {q}"
 
-    for idx, paper in enumerate(normalized, start=1):
-        lines.append(f"\nPaper {idx}:")
-        lines.append(f"ID: {paper['id']}")
-        lines.append(f"Title: {paper['title']}")
-        lines.append(f"Summary: {paper['summary']}")
+    lines = [f"User query: {q}", "", "Relevant papers:"]
+
+    for idx, p in enumerate(items, 1):
+        lines.extend([
+            f"\nPaper {idx}:",
+            f"ID: {p['id']}",
+            f"Title: {p['title']}",
+            f"Summary: {p['summary']}"
+        ])
 
     return "\n".join(lines)
 
 
 # ============================================================
-#  SAFE FALLBACK
+#  Fallback
 # ============================================================
 
-def _safe_fallback(summary: str = "") -> Dict:
-    """
-    Returned when the OpenAI API misbehaves or returns invalid JSON.
-    """
-    return {
-        "summary": summary or "Analysis could not be completed.",
-        "key_concepts": [],
-        "relations": [],
-    }
+def _safe_fallback(msg: str = "") -> Dict:
+    return {"summary": msg or "Analysis failed.", "key_concepts": [], "relations": []}
 
 
 # ============================================================
-#  OPENAI CALL
+#  OpenAI Call
 # ============================================================
 
 def _call_openai_for_analysis(prompt: str) -> Dict:
-    """
-    Calls OpenAI and ALWAYS returns valid JSON dict.
-    """
     system_msg = (
         "You are an expert research analyst. Extract structured knowledge as JSON.\n"
-        "Output MUST follow exactly:\n"
+        "Output MUST be:\n"
         "{\n"
         "  \"summary\": string,\n"
         "  \"key_concepts\": [string],\n"
         "  \"relations\": [ {\"source\": string, \"target\": string, \"relation\": \"related_to\"} ]\n"
         "}\n"
         "Rules:\n"
-        "- Relations must reference conceptual terms ONLY.\n"
-        "- Do NOT reference paper IDs.\n"
-        "- No markdown. No extra fields."
+        "- Relations must reference conceptual terms only, not paper IDs.\n"
+        "- No markdown, no extra fields."
     )
 
     try:
@@ -180,39 +150,34 @@ def _call_openai_for_analysis(prompt: str) -> Dict:
 
         content = resp.choices[0].message.content if resp.choices else None
         if not content:
-            logger.warning("⚠️ OpenAI returned empty content.")
-            return _safe_fallback("No analysis output.")
+            return _safe_fallback("Model returned no content.")
 
     except (APIError, APITimeoutError, RateLimitError) as e:
-        logger.error(f"OpenAI API failure: {e}", exc_info=True)
-        return _safe_fallback("OpenAI API error occurred.")
+        logger.error(f"OpenAI API error: {e}")
+        return _safe_fallback("OpenAI API error.")
 
     except Exception as e:
         logger.error(f"Unexpected OpenAI error: {e}", exc_info=True)
-        return _safe_fallback("Unexpected model error.")
+        return _safe_fallback("Unexpected OpenAI error.")
 
     try:
         return json.loads(content)
     except json.JSONDecodeError:
-        logger.error("Invalid JSON returned by model", exc_info=True)
-        return _safe_fallback(content)
+        logger.error("Model returned invalid JSON")
+        return _safe_fallback("Invalid JSON.")
 
 
 # ============================================================
-#  PUBLIC ENTRYPOINT
+#  Public Entrypoint
 # ============================================================
 
 async def run_analysis_task(
     query: str,
     papers: Optional[List[Union[Paper, dict]]] = None
 ) -> Dict:
-    """
-    Global analysis stage of the workflow.
-    Converts papers into structured conceptual knowledge.
-    """
-    context = _build_context(query, papers)
 
-    result = await asyncio.to_thread(_call_openai_for_analysis, context)
+    prompt = _build_context(query, papers)
+    result = await asyncio.to_thread(_call_openai_for_analysis, prompt)
 
     return {
         "summary": clean_text(result.get("summary", "")),

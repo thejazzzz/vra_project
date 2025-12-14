@@ -1,26 +1,32 @@
 # File: api/routers/graphs.py
-import asyncio
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Header
 from services.graph_persistence_service import load_graphs
+from typing import Optional
+
+
 import logging
 
+router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter()
+def get_user_id(x_user_id: Optional[str] = Header(None)):
+    return x_user_id or "demo-user"
+
 
 @router.get("/graphs/{query}")
-async def get_graphs(query: str):
-    user_id = "demo-user"  # Replace with real auth later
-    try:
-        graphs = await asyncio.to_thread(load_graphs, query, user_id)
-    except Exception as e:
-        # Log the exception for debugging (avoiding PII: user_id, query)
-        logger.error(f"Error loading graphs: {type(e).__name__}: {str(e)}")        
-        raise HTTPException(status_code=500, detail="Error loading graphs")    
+def get_graphs(query: str, user_id: str = Depends(get_user_id)):
 
-    # Distinguish "not found" (None) from "empty result"
+    if not query or not query.strip():
+        raise HTTPException(status_code=400, detail="Invalid query")
+
+    try:
+        graphs = load_graphs(query, user_id)
+    except Exception as e:
+        logger.error(f"Graph load error: {type(e).__name__}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to load graphs")
+
     if graphs is None:
         raise HTTPException(status_code=404, detail="Graphs not found")
 
-    return graphs  # Could be empty, which is valid
+    return graphs
