@@ -37,13 +37,9 @@ class GraphBuilderAgent:
         )
 
         # ----------------------------
-        # Build Citation Graph (canonical IDs only)
+        # Build Citation Graph
         # ----------------------------
-        citation_graph = build_citation_graph([
-            {"id": p.get("canonical_id")}
-            for p in selected_papers
-            if p.get("canonical_id")
-        ])
+        citation_graph = build_citation_graph(selected_papers)
 
         try:
             save_graphs(query, user_id, kg, citation_graph)

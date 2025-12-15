@@ -83,11 +83,21 @@ def _normalize_relation(r: dict) -> Optional[Dict[str, str]]:
 #  Prompt Build
 # ============================================================
 
-def _build_context(query: str, papers: Optional[List[Union[Paper, dict]]]) -> str:
+def _build_context(query: str, papers: Optional[List[Union[Paper, dict]]], audience: str = "general") -> str:
     q = clean_text(query)
 
+    # Audience instructions
+    audience_instructions = {
+        "phd": "Focus on methodology, technical depth, citation networks, and research gaps. Rigorous academic tone.",        "industry": "Focus on practical applications, market relevance, strategic value, and business trends. Executive summary tone.",
+        "layman": "Explain concepts simply, avoid jargon, focus on the 'big picture' and real-world impact.",
+        "general": "Provide a balanced academic summary suitable for general researchers."
+    }
+    instruction = audience_instructions.get(audience, audience_instructions["general"])
+
+    prefix = f"AUDIENCE: {audience.upper()}\nINSTRUCTION: {instruction}\n\n"
+
     if not papers:
-        return f"User query only.\nQuery: {q}"
+        return f"{prefix}User query only.\nQuery: {q}"
 
     items = []
     for p in papers[:5]:
@@ -96,9 +106,9 @@ def _build_context(query: str, papers: Optional[List[Union[Paper, dict]]]) -> st
             items.append(norm)
 
     if not items:
-        return f"No usable paper metadata.\nQuery: {q}"
+        return f"{prefix}No usable paper metadata.\nQuery: {q}"
 
-    lines = [f"User query: {q}", "", "Relevant papers:"]
+    lines = [f"{prefix}User query: {q}", "", "Relevant papers:"]
 
     for idx, p in enumerate(items, 1):
         lines.extend([
@@ -173,10 +183,11 @@ def _call_openai_for_analysis(prompt: str) -> Dict:
 
 async def run_analysis_task(
     query: str,
-    papers: Optional[List[Union[Paper, dict]]] = None
+    papers: Optional[List[Union[Paper, dict]]] = None,
+    audience: str = "general"
 ) -> Dict:
 
-    prompt = _build_context(query, papers)
+    prompt = _build_context(query, papers, audience)
     result = await asyncio.to_thread(_call_openai_for_analysis, prompt)
 
     return {

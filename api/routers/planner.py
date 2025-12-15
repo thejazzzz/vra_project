@@ -34,6 +34,7 @@ def _load_or_create_state(query: str):
         citation_graph={},
         current_step=None,
         user_feedback=None,
+        audience="general",
     )
 
 
@@ -65,7 +66,7 @@ async def plan_task(payload: ResearchRequest):
         state["collected_papers"] = papers
         state["selected_papers"] = deepcopy(papers)
         state["current_step"] = "awaiting_research_review"
-
+        state["audience"] = payload.audience or "general"
         save_state_for_query(query, state, USER_ID)
         return {"state": state}
 

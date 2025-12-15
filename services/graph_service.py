@@ -42,13 +42,49 @@ def build_knowledge_graph(
 def build_citation_graph(selected_papers: List[Dict]) -> Dict:
     G = nx.DiGraph()
 
+    # 1. Map S2 IDs to Canonical IDs for internal linking
+    s2_to_canonical = {}
+
     for p in selected_papers:
         cid = p.get("canonical_id")
         if not cid:
             logger.warning("Skipping paper missing canonical_id in citation graph")
             continue
 
-        G.add_node(cid, type="paper")
+        G.add_node(cid, type="paper", title=p.get("title", ""))
+        
+        # Check metadata for Semantic Scholar ID
+        meta = p.get("metadata", {})
+        
+        # If the metadata itself IS the S2 payload (which it is for S2 agent)
+        # normalize to always look for 'paperId'
+        s2_id = meta.get("paperId") or p.get("paper_id")
+        
+        if s2_id:
+            s2_to_canonical[str(s2_id)] = cid
 
-    logger.info(f"📎 Citation Graph nodes = {G.number_of_nodes()}")
+    # 2. Add edges
+    edge_count = 0
+    for p in selected_papers:
+        src_cid = p.get("canonical_id")
+        if not src_cid: 
+            continue
+
+        # Extract references from metadata
+        meta = p.get("metadata", {})
+        references = meta.get("references", [])
+        
+        # If references is None (not a list), skip
+        if not references:
+            continue
+
+        for ref in references:
+            ref_s2_id = ref.get("paperId")
+            if ref_s2_id:
+                tgt_cid = s2_to_canonical.get(str(ref_s2_id))
+                if tgt_cid and tgt_cid != src_cid:
+                    G.add_edge(src_cid, tgt_cid, type="citation")
+                    edge_count += 1
+
+    logger.info(f"📎 Citation Graph: {G.number_of_nodes()} nodes, {edge_count} edges")
     return json_graph.node_link_data(G)

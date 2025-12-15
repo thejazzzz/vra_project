@@ -105,12 +105,20 @@ async def process_research_task(query: str) -> Dict:
             title = clean_text(paper.get("title", "Untitled"))
             abstract = clean_text(paper.get("summary", ""))
 
-            canonical_id = paper.get("canonical_id") or build_canonical_id(
-                primary_id=paper.get("id"),
-                title=title,
-                source=paper.get("source")
-            )
-
+            canonical_id = paper.get("canonical_id")
+            
+            # Fallback if somehow missing (e.g. direct call bypassing merger)
+            if not canonical_id:
+                canonical_id = build_canonical_id(
+                    primary_id=paper.get("id"),
+                    title=title,
+                    source=paper.get("source")
+                )
+            
+            if not canonical_id:
+                logger.error(f"❌ Skipping paper '{title[:30]}...' - Could not generate canonical_id")
+                failed_storage.append({"error": "missing_canonical_id", "title": title[:50], "source": paper.get("source")})
+                continue
             try:
                 existing = (
                     db.query(Paper)

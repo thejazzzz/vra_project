@@ -14,10 +14,16 @@ S2_FIELDS = [
     "year",
     "externalIds",
     "url",
+    "references",
+    "citations",
+
 ]
 
 API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 
+
+import time
+import random
 
 def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
     params = {
@@ -27,13 +33,43 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
     }
 
     headers = {"x-api-key": API_KEY} if API_KEY else {}
+    
+    max_retries = 3
+    base_delay = 2
 
-    try:
-        resp = requests.get(S2_API_URL, params=params, headers=headers, timeout=12)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        logger.error(f"Semantic Scholar request failed: {e}", exc_info=True)
+    for attempt in range(max_retries + 1):
+        try:
+            resp = requests.get(S2_API_URL, params=params, headers=headers, timeout=12)
+            
+            if resp.status_code == 429:
+                wait_time = int(resp.headers.get("Retry-After", base_delay * (2 ** attempt)))
+                # Cap wait time to avoid hanging too long
+                wait_time = min(wait_time, 30)
+                # Add jitter
+                wait_time += random.uniform(0, 1)
+                
+                logger.warning(f"⚠️ S2 Rate Limit (429). Retrying in {wait_time:.2f}s... (Attempt {attempt+1}/{max_retries})")
+                time.sleep(wait_time)
+                continue
+                
+            resp.raise_for_status()
+            data = resp.json()
+            break # Success
+            
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429:
+                # Should be handled above, but just in case raise_for_status catches it first
+                logger.warning(f"⚠️ S2 Rate Limit hit via HTTPError: {e}")
+                time.sleep(5)
+                continue
+            logger.error(f"Semantic Scholar HTTP error: {e}")
+            return []
+            
+        except Exception as e:
+            logger.error(f"Semantic Scholar request failed: {e}", exc_info=True)
+            return []
+    else:
+        logger.error("❌ Semantic Scholar: Max retries exceeded.")
         return []
 
     results = data.get("data", [])
@@ -68,6 +104,8 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
             "authors": authors,
             "published": str(p.get("year")) if p.get("year") else None,
             "pdf_url": pdf_url,
+            "references": p.get("references", []),
+            "citations": p.get("citations", []),
             "metadata": p,
         })
 

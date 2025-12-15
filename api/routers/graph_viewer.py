@@ -36,7 +36,7 @@ def view_graph(query: str, user_id: str = Depends(get_user_id)):
     esc_user = escape(user_id)
 
     integrity_hash = (
-        "sha384-tB6xhxL7sRKqGZo4PMBVXgS5aXoaZySUdkGFUTkOcJCIZy9FHn5Vf3L7hIwrKyYV"
+        "sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i"
     )
 
     html = f"""
