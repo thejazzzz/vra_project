@@ -6,6 +6,7 @@ class Graph(Base):
     __tablename__ = "graphs"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+
     query = Column(String(500), nullable=False, index=True)
     user_id = Column(String(255), nullable=False, index=True)
 

@@ -3,6 +3,8 @@ from typing import TypedDict, List, Optional, Dict, Any
 
 class VRAState(TypedDict, total=False):
     query: str
+    audience: str
+
 
     # Paper data
     collected_papers: List[Dict[str, Any]]

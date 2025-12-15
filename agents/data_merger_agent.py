@@ -3,6 +3,8 @@ import logging
 from typing import Dict, List
 import copy
 
+from utils.id_normalization import build_canonical_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,7 +29,16 @@ class DataMergerAgent:
         index: Dict[str, Dict] = {}
 
         for paper in papers:
+            # Enforce canonical_id generation
             cid = paper.get("canonical_id")
+            if not cid:
+                cid = build_canonical_id(
+                    primary_id=paper.get("id") or paper.get("paper_id"),
+                    title=paper.get("title"),
+                    source=paper.get("source")
+                )
+                paper["canonical_id"] = cid
+
             if not cid:
                 logger.warning(f"Skipping paper without canonical_id: {paper.get('title', 'Unknown')}")
                 continue

@@ -1,104 +1,81 @@
 # File: services/research_service.py
+
 import asyncio
 import logging
-import fitz  # PyMuPDF
-from typing import Dict, List, Tuple, Optional
+import fitz
+import hashlib
+from typing import Dict, List, Optional, Tuple
 
-from clients.arxiv_client import search_arxiv
-from clients.chroma_client import get_client
+from sqlalchemy.orm.attributes import flag_modified
+
+from agents.data_acquisition_agent import data_acquisition_agent
+from utils.id_normalization import build_canonical_id
 from database.db import SessionLocal
 from database.models.paper_model import Paper
 from utils.sanitization import clean_text, is_nonempty_text
+from clients.chroma_client import get_client
 
 logger = logging.getLogger(__name__)
 
 
-def normalize_arxiv_id(raw_id: str) -> str:
-    """Normalize arXiv ID to final value only, e.g.
-    'http://arxiv.org/abs/2306.11113v2' -> '2306.11113v2'
-    """
-    if not raw_id:
-        return ""
-    return raw_id.split("/")[-1].strip()
-
-
-def clean_pdf_text(text: str) -> str:
-    """
-    Clean PDF extracted text using the shared sanitizer.
-    """
-    return clean_text(text)
-
-
-async def download_and_extract_pdf(pdf_url: str) -> str:
-    """Download PDF async and extract text using PyMuPDF.
-    Returns extracted text or '' if failed.
-    """
+# ------------------------------------------------------------
+# PDF DOWNLOAD + EXTRACTION
+# ------------------------------------------------------------
+async def download_pdf(pdf_url: Optional[str]) -> str:
     if not pdf_url:
         return ""
 
+    import aiohttp
+
     try:
-        import aiohttp
-
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0 Safari/537.36"
-            )
-        }
-
-        timeout = aiohttp.ClientTimeout(total=30, connect=10)
-        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
+        async with aiohttp.ClientSession() as session:
             async with session.get(pdf_url, timeout=25) as resp:
                 if resp.status != 200:
-                    logger.warning(f"PDF download failed: {resp.status} | {pdf_url}")
+                    logger.warning(f"PDF download failed ({resp.status}): {pdf_url}")
                     return ""
                 pdf_bytes = await resp.read()
-
-        def extract():
-            try:
-                doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-                pages = [page.get_text("text") for page in doc]
-                doc.close()
-                return "\n".join(pages)
-            except Exception as e:
-                logger.error(f"PyMuPDF failed for {pdf_url}: {e}")
-                return ""
-
-        raw_text = await asyncio.to_thread(extract)
-        return clean_pdf_text(raw_text)
-
     except Exception as e:
-        logger.warning(f"PDF fetch error: {pdf_url} | {e}")
+        logger.warning(f"PDF request failed for {pdf_url}: {e}")
         return ""
 
+    def extract():
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            text = "\n".join(page.get_text("text") for page in doc)
+            doc.close()
+            return clean_text(text)
+        except Exception as e:
+            logger.warning(f"PDF extraction error: {e}")
+            return ""
 
+    return await asyncio.to_thread(extract)
+
+
+# ------------------------------------------------------------
+# MAIN PIPELINE
+# ------------------------------------------------------------
 async def process_research_task(query: str) -> Dict:
+    """
+    PIPELINE:
+    1. Multi-source acquisition
+    2. Deduplication (handled upstream)
+    3. PDF extraction
+    4. DB upsert (merged metadata + hash dedupe)
+    5. Vector embeddings (Chroma)
+    """
     db = SessionLocal()
-    stored_entries: List[Tuple[Paper, dict]] = []
-    failed_storage: List[str] = []
-    failed_embedding: List[str] = []
-    papers: List[Dict] = []
-    error_message: Optional[str] = None
+
+    stored: List[Tuple[Paper, dict]] = []
+    failed_storage = []
+    failed_embedding = []
+    error_message = None
 
     try:
-        vector_client = get_client()
+        # --------------------------------------------
+        # 1. Fetch merged papers
+        # --------------------------------------------
+        papers = await data_acquisition_agent.run(query, limit=5)
 
-        # Fetch metadata from arXiv
-        try:
-            papers = await asyncio.to_thread(search_arxiv, query)
-        except Exception as e:
-            logger.error(f"arXiv search failed: {e}", exc_info=True)
-            return {
-                "success": False,
-                "query": query,
-                "papers_found": 0,
-                "error": "Failed to fetch papers from arXiv",
-                "storage_failed": [],
-                "embedding_failed": [],
-                "db_ids": [],
-                "papers": [],
-            }
         if not papers:
             return {
                 "success": True,
@@ -109,101 +86,153 @@ async def process_research_task(query: str) -> Dict:
                 "db_ids": [],
                 "papers": []
             }
-        logger.info(f"Fetched {len(papers)} papers from arXiv")
 
-        # Download PDFs asynchronously
-        pdf_tasks = [download_and_extract_pdf(p.get("pdf_url")) for p in papers]
+        logger.info(f"📄 Papers after dedupe+merge: {len(papers)}")
+
+        # --------------------------------------------
+        # 2. PDF extraction async
+        # --------------------------------------------
+        pdf_tasks = [download_pdf(p.get("pdf_url")) for p in papers]
         pdf_texts = await asyncio.gather(*pdf_tasks)
 
-        # Store in DB
+        vector_client = get_client()
+
+        # --------------------------------------------
+        # 3. DB UPSERT (NO COMMIT INSIDE LOOP)
+        # --------------------------------------------
         for paper, fulltext in zip(papers, pdf_texts):
-            raw_id = paper.get("id")
-            paper_id = normalize_arxiv_id(raw_id)
-            if not paper_id:
-                failed_storage.append("unknown")
+
+            title = clean_text(paper.get("title", "Untitled"))
+            abstract = clean_text(paper.get("summary", ""))
+
+            canonical_id = paper.get("canonical_id")
+            
+            # Fallback if somehow missing (e.g. direct call bypassing merger)
+            if not canonical_id:
+                canonical_id = build_canonical_id(
+                    primary_id=paper.get("id"),
+                    title=title,
+                    source=paper.get("source")
+                )
+            
+            if not canonical_id:
+                logger.error(f"❌ Skipping paper '{title[:30]}...' - Could not generate canonical_id")
+                failed_storage.append({"error": "missing_canonical_id", "title": title[:50], "source": paper.get("source")})
                 continue
-
-            paper["id"] = paper_id
-            paper["title"] = clean_text(paper.get("title", "Untitled Paper"))
-            paper["summary"] = clean_text(paper.get("summary", ""))
-
-            clean_text_body = clean_pdf_text(fulltext)
-
             try:
                 existing = (
                     db.query(Paper)
-                    .filter(Paper.paper_id == paper_id)
+                    .filter(Paper.canonical_id == canonical_id)
                     .one_or_none()
                 )
 
+                # =====================================================
+                # CASE A — UPDATE EXISTING ROW
+                # =====================================================
                 if existing:
-                    existing.raw_text = clean_text_body or existing.raw_text
-                    if is_nonempty_text(paper["summary"]):
-                        existing.abstract = paper["summary"]
-                    existing.paper_metadata = paper
+
+                    src = paper.get("source")
+                    if src:
+                        existing.paper_metadata[src] = paper
+                        flag_modified(existing, "paper_metadata")
+
+                    if is_nonempty_text(abstract):
+                        existing.abstract = abstract
+
+                    # -------- HASH-BASED DEDUPLICATION --------
+                    if fulltext:
+                        content_hash = hashlib.md5(fulltext.encode()).hexdigest()
+                        existing_hashes = existing.paper_metadata.get("pdf_hashes", [])
+
+                        if content_hash not in existing_hashes:
+                            existing.raw_text = (existing.raw_text or "") + "\n" + fulltext
+                            existing_hashes.append(content_hash)
+                            existing.paper_metadata["pdf_hashes"] = existing_hashes
+                            flag_modified(existing, "paper_metadata")
+
                     db_obj = existing
+
+                # =====================================================
+                # CASE B — INSERT NEW PAPER
+                # =====================================================
                 else:
+                    hashes = []
+                    if fulltext:
+                        hashes.append(hashlib.md5(fulltext.encode()).hexdigest())
+
                     db_obj = Paper(
-                        paper_id=paper_id,
-                        title=paper["title"],
-                        abstract=paper["summary"],
-                        raw_text=clean_text_body,
-                        paper_metadata=paper
+                        canonical_id=canonical_id,
+                        paper_id=paper.get("id"),   # backward compatibility
+                        title=title,
+                        abstract=abstract,
+                        raw_text=fulltext,
+                        paper_metadata={
+                            paper.get("source", "unknown"): paper,
+                            "pdf_hashes": hashes,
+                        },
                     )
                     db.add(db_obj)
 
-                db.commit()
-                stored_entries.append((db_obj, paper))
+                stored.append((db_obj, paper))
+
             except Exception as e:
-                logger.error(f"Failed to store paper {paper_id}: {e}", exc_info=True)
+                logger.error(f"❌ DB write failed for {canonical_id}: {e}", exc_info=True)
                 db.rollback()
-                failed_storage.append(paper_id)
+                failed_storage.append(canonical_id)
                 continue
 
-            try:
+        # --------------------------------------------
+        # 3B. BATCH COMMIT (IMPORTANT!)
+        # --------------------------------------------
+        if stored:
+            db.commit()
+            for db_obj, _ in stored:
                 db.refresh(db_obj)
-            except Exception as e:
-                logger.warning(f"Failed to refresh paper {paper_id}: {e}")
 
-        # Embed abstracts in Chroma
-        embedding_tasks = []
-        entries_with_embeddings = []
+        # --------------------------------------------
+        # 4. CHROMA EMBEDDINGS — CORRECT ALIGNMENT
+        # --------------------------------------------
+        papers_to_embed = []
 
-        for db_paper, paper_meta in stored_entries:
-            if not is_nonempty_text(db_paper.abstract):
-                continue
+        for db_obj, _ in stored:
+            if is_nonempty_text(db_obj.abstract):
+                chroma_id = f"paper-{db_obj.id}"
+                papers_to_embed.append((db_obj, chroma_id))
 
-            chroma_id = f"paper-{db_paper.id}"
-            task = asyncio.to_thread(
-                vector_client.store,
-                chroma_id,
-                db_paper.abstract,
-                {"paper_db_id": db_paper.id, "paper_id": db_paper.paper_id},
-            )
-            embedding_tasks.append(task)
-            entries_with_embeddings.append((db_paper, paper_meta))
+        if papers_to_embed:
+            embed_tasks = [
+                asyncio.to_thread(
+                    vector_client.store,
+                    chroma_id,
+                    db_obj.abstract,
+                    {"paper_db_id": db_obj.id, "canonical_id": db_obj.canonical_id},
+                )
+                for db_obj, chroma_id in papers_to_embed
+            ]
 
-        if embedding_tasks:
-            results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
-            for entry, result in zip(entries_with_embeddings, results):
+            results = await asyncio.gather(*embed_tasks, return_exceptions=True)
+
+            for (db_obj, _), result in zip(papers_to_embed, results):
                 if isinstance(result, Exception):
-                    failed_embedding.append(entry[0].paper_id)
+                    failed_embedding.append(db_obj.canonical_id)
 
     except Exception as e:
-        logger.error(f"Unexpected error in process_research_task: {e}", exc_info=True)
         error_message = str(e)
+        logger.error(f"🚨 UNEXPECTED ERROR: {e}", exc_info=True)
 
     finally:
         db.close()
 
+    # --------------------------------------------
+    # FINAL RESULT
+    # --------------------------------------------
     return {
         "success": error_message is None,
         "query": query,
-        "papers_found": len(stored_entries),
+        "papers_found": len(stored),
         "storage_failed": failed_storage,
         "embedding_failed": failed_embedding,
-        "db_ids": [db_paper.id for db_paper, _ in stored_entries],
+        "db_ids": [db_obj.id for db_obj, _ in stored],
         "papers": papers,
         "error": error_message,
     }
-
