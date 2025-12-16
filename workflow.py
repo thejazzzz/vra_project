@@ -3,6 +3,8 @@ import logging
 import asyncio
 from state.state_schema import VRAState
 from agents.graph_builder_agent import graph_builder_agent
+from agents.gap_analysis_agent import gap_analysis_agent
+from agents.reporting_agent import reporting_agent
 from services.analysis_service import run_analysis_task
 
 logger = logging.getLogger(__name__)
@@ -36,14 +38,29 @@ async def run_step(state: VRAState) -> VRAState:
         # STEP 4 — WAIT FOR GRAPH REVIEW
         # ---------------------------------------------------------
         if current == "awaiting_graph_review":
+            # This state waits for user signal.
+            # If user approves, they might set state to 'awaiting_gap_analysis' or 'awaiting_report'
             return state
 
         # ---------------------------------------------------------
         # STEP 5 — REPORT GENERATION (placeholder)
         # ---------------------------------------------------------
+        # ---------------------------------------------------------
+        # STEP 4.5 — GAP ANALYSIS (New Level 4)
+        # ---------------------------------------------------------
+        # We run this automatically after graph review, or as part of reporting
+        if current == "awaiting_gap_analysis":
+             # Run gap analysis
+            state = await asyncio.to_thread(gap_analysis_agent.run, state)
+            state["current_step"] = "awaiting_report"
+            return state
+
+        # ---------------------------------------------------------
+        # STEP 5 — REPORT GENERATION
+        # ---------------------------------------------------------
         if current == "awaiting_report":
-            state["draft_report"] = "Report generation coming soon..."
-            state["current_step"] = "awaiting_final_review"
+            # Real reporting agent
+            state = await asyncio.to_thread(reporting_agent.run, state)
             return state
 
         # ---------------------------------------------------------

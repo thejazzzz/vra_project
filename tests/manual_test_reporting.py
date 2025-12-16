@@ -2,10 +2,6 @@ import sys
 import os
 import asyncio
 from unittest.mock import MagicMock
-
-from unittest.mock import MagicMock, patch
-import sys
-
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -53,7 +49,7 @@ async def test_reporting():
     
     # Verify
     if new_state.get("draft_report") == "# Mocked Report\n\nThis is a test report.":
-        print("✅ Report content set correctly.")
+        new_state = await agent_instance.run(fake_state)    
     else:
         print(f"❌ Report content mismatch: {new_state.get('draft_report')}")
         

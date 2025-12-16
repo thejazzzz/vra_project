@@ -1,7 +1,7 @@
 # agents/graph_builder_agent.py
 import logging
 from typing import Dict
-from services.graph_service import build_knowledge_graph, build_citation_graph
+from services.graph_service import build_knowledge_graph, build_citation_graph, enrich_knowledge_graph
 from services.graph_persistence_service import save_graphs
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,17 @@ class GraphBuilderAgent:
         # Build Citation Graph
         # ----------------------------
         citation_graph = build_citation_graph(selected_papers)
+
+        # ----------------------------
+        # Level 3: Cross-Graph Enrichment
+        # ----------------------------
+        try:
+            logger.info(f"Enriching knowledge graph for query={query}")
+            kg = enrich_knowledge_graph(kg, citation_graph)
+        except Exception as e:
+            logger.error(f"Failed to enrich knowledge graph for query={query}: {e}")
+            #Continue with the original graph rather than failing completely
+
 
         try:
             save_graphs(query, user_id, kg, citation_graph)

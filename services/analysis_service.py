@@ -1,4 +1,5 @@
 # File: services/analysis_service.py
+
 import asyncio
 import json
 import logging
@@ -23,6 +24,7 @@ _client_lock = threading.Lock()
 
 def _get_client() -> OpenAI:
     global _client
+
     if _client is None:
         with _client_lock:
             if _client is None:
@@ -37,9 +39,8 @@ def _get_client() -> OpenAI:
 
 ANALYSIS_MODEL = os.getenv(
     "OPENAI_ANALYSIS_MODEL",
-    os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
 )
-
 
 # ============================================================
 #  Normalization Helpers
@@ -47,13 +48,11 @@ ANALYSIS_MODEL = os.getenv(
 
 def _normalize_paper(p: Union[Paper, dict]) -> Dict[str, str]:
     """Normalize both dict-based and Pydantic papers."""
-
     if isinstance(p, dict):
         pid = p.get("canonical_id") or p.get("id") or p.get("paper_id") or ""
         title = p.get("title", "")
         summary = p.get("summary", "")
     else:
-        # Pydantic Paper model only has id/title/summary
         pid = p.id
         title = p.title
         summary = p.summary
@@ -73,33 +72,66 @@ def _normalize_relation(r: dict) -> Optional[Dict[str, str]]:
     tgt = clean_text(r.get("target", ""))
     rel = clean_text(r.get("relation", "related_to"))
 
+    evidence_raw = r.get("evidence", {})
+    evidence: Dict[str, str] = {}
+
+    if isinstance(evidence_raw, dict):
+        if "paper_id" in evidence_raw:
+            evidence["paper_id"] = clean_text(evidence_raw.get("paper_id", ""))
+        if "excerpt" in evidence_raw:
+            evidence["excerpt"] = clean_text(evidence_raw.get("excerpt", ""))
+
     if not (src and tgt):
         return None
 
-    return {"source": src, "target": tgt, "relation": rel}
-
+    return {
+        "source": src,
+        "target": tgt,
+        "relation": rel,
+        "evidence": evidence,
+    }
 
 # ============================================================
-#  Prompt Build
+#  Prompt Builder
 # ============================================================
 
-def _build_context(query: str, papers: Optional[List[Union[Paper, dict]]], audience: str = "general") -> str:
+def _build_context(
+    query: str,
+    papers: Optional[List[Union[Paper, dict]]],
+    audience: str = "general",
+) -> str:
     q = clean_text(query)
 
-    # Audience instructions
     audience_instructions = {
-        "phd": "Focus on methodology, technical depth, citation networks, and research gaps. Rigorous academic tone.",        "industry": "Focus on practical applications, market relevance, strategic value, and business trends. Executive summary tone.",
-        "layman": "Explain concepts simply, avoid jargon, focus on the 'big picture' and real-world impact.",
-        "general": "Provide a balanced academic summary suitable for general researchers."
+        "general": "Provide a clear, concise research-oriented analysis.",
+        "phd": "Focus on methodology, technical depth, citation networks, and research gaps.",
+        "industry": "Focus on practical applications, market relevance, and strategic value.",
     }
-    instruction = audience_instructions.get(audience, audience_instructions["general"])
 
-    prefix = f"AUDIENCE: {audience.upper()}\nINSTRUCTION: {instruction}\n\n"
+    instruction = audience_instructions.get(
+        audience.lower(),
+        audience_instructions["general"],
+    )
+
+    relation_types = """
+    Relation types:
+    - uses: A uses B
+    - extends: A builds upon B
+    - improves: A improves B
+    - related_to: Generic connection
+    """
+
+    prefix = (
+        f"AUDIENCE: {audience.upper()}\n"
+        f"INSTRUCTION: {instruction}\n"
+        f"{relation_types}\n"
+    )
 
     if not papers:
         return f"{prefix}User query only.\nQuery: {q}"
 
-    items = []
+    items: List[Dict[str, str]] = []
+
     for p in papers[:5]:
         norm = _normalize_paper(p)
         if is_nonempty_text(norm["title"]) or is_nonempty_text(norm["summary"]):
@@ -111,23 +143,28 @@ def _build_context(query: str, papers: Optional[List[Union[Paper, dict]]], audie
     lines = [f"{prefix}User query: {q}", "", "Relevant papers:"]
 
     for idx, p in enumerate(items, 1):
-        lines.extend([
-            f"\nPaper {idx}:",
-            f"ID: {p['id']}",
-            f"Title: {p['title']}",
-            f"Summary: {p['summary']}"
-        ])
+        lines.extend(
+            [
+                f"\nPaper {idx}:",
+                f"ID: {p['id']}",
+                f"Title: {p['title']}",
+                f"Summary: {p['summary']}",
+            ]
+        )
 
     return "\n".join(lines)
-
 
 # ============================================================
 #  Fallback
 # ============================================================
 
 def _safe_fallback(msg: str = "") -> Dict:
-    return {"summary": msg or "Analysis failed.", "key_concepts": [], "relations": []}
-
+    return {
+        "summary": msg or "Analysis failed.",
+        "nodes": [],
+        "key_concepts": [],
+        "relations": [],
+    }
 
 # ============================================================
 #  OpenAI Call
@@ -139,12 +176,15 @@ def _call_openai_for_analysis(prompt: str) -> Dict:
         "Output MUST be:\n"
         "{\n"
         "  \"summary\": string,\n"
-        "  \"key_concepts\": [string],\n"
-        "  \"relations\": [ {\"source\": string, \"target\": string, \"relation\": \"related_to\"} ]\n"
+        "  \"nodes\": [{\"id\": string, \"type\": \"concept|method|metric|task|tool\"}],\n"
+        "  \"relations\": [{\"source\": string, \"target\": string, "
+        "\"relation\": \"uses|extends|improves|related_to\", "
+        "\"evidence\": {\"paper_id\": string, \"excerpt\": string}}]\n"
         "}\n"
         "Rules:\n"
-        "- Relations must reference conceptual terms only, not paper IDs.\n"
-        "- No markdown, no extra fields."
+        "- Nodes must be extracted entities.\n"
+        "- Relations must link two existing node IDs.\n"
+        "- No markdown."
     )
 
     try:
@@ -162,12 +202,12 @@ def _call_openai_for_analysis(prompt: str) -> Dict:
         if not content:
             return _safe_fallback("Model returned no content.")
 
-    except (APIError, APITimeoutError, RateLimitError) as e:
-        logger.error(f"OpenAI API error: {e}")
+    except (APIError, APITimeoutError, RateLimitError) as exc:
+        logger.error("OpenAI API error: %s", exc)
         return _safe_fallback("OpenAI API error.")
 
-    except Exception as e:
-        logger.error(f"Unexpected OpenAI error: {e}", exc_info=True)
+    except Exception as exc:
+        logger.error("Unexpected OpenAI error", exc_info=True)
         return _safe_fallback("Unexpected OpenAI error.")
 
     try:
@@ -176,7 +216,6 @@ def _call_openai_for_analysis(prompt: str) -> Dict:
         logger.error("Model returned invalid JSON")
         return _safe_fallback("Invalid JSON.")
 
-
 # ============================================================
 #  Public Entrypoint
 # ============================================================
@@ -184,7 +223,7 @@ def _call_openai_for_analysis(prompt: str) -> Dict:
 async def run_analysis_task(
     query: str,
     papers: Optional[List[Union[Paper, dict]]] = None,
-    audience: str = "general"
+    audience: str = "general",
 ) -> Dict:
 
     prompt = _build_context(query, papers, audience)
@@ -203,3 +242,34 @@ async def run_analysis_task(
             if (norm := _normalize_relation(r)) is not None
         ],
     }
+
+
+def generate_report_content(prompt: str) -> str:
+    """
+    Generate a markdown report based on the provided prompt using the LLM.
+    This is a wrapper around the OpenAI client.
+    """
+    system_msg = "You are a research assistant writing a formal report. Use Markdown."
+    
+    try:
+        # We run this synchronously in a thread because OpenAI client is sync
+        # But wait, the caller might differ. ReportingAgent calls it synchronously? 
+        # ReportingAgent.py: report_text = generate_report_content(prompt)
+        # It seems ReportingAgent expects a synchronous call or it's running in sync ctx.
+        # Let's check ReportingAgent.run. It is a sync method: def run(self, state): ...
+        # So this should be synchronous.
+        
+        resp = _get_client().chat.completions.create(
+            model=ANALYSIS_MODEL,
+            temperature=0.3,
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        content = resp.choices[0].message.content if resp.choices else ""
+        return content or "Report generation returned empty."
+
+    except Exception as exc:
+        logger.error("Report generation failed: %s", exc)
+        return f"Error communicating with LLM: {exc}"

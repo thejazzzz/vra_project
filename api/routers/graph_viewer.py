@@ -1,14 +1,22 @@
 # File: api/routers/graph_viewer.py
 from html import escape
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Header, Depends
-from fastapi.responses import HTMLResponse
-from services.graph_persistence_service import load_graphs
+from typing import Optional, Dict, Any
+from fastapi import APIRouter, HTTPException, Header, Depends, Body
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
+from services.graph_persistence_service import load_graphs, save_graphs
+from services.graph_editing_service import apply_graph_edit
 import json
 import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class EditGraphRequest(BaseModel):
+    action: str
+    graph_type: str
+    payload: Dict[str, Any]
 
 
 def get_user_id(x_user_id: Optional[str] = Header(None)):
@@ -100,6 +108,11 @@ def view_graph(query: str, user_id: str = Depends(get_user_id)):
                 .style("stroke", "#aaa")
                 .style("stroke-width", 1.2);
 
+            link.append("title")
+                .text(d => d.evidence && d.evidence.excerpt 
+                    ? `Relation: ${d.relation}\nEvidence: "${d.evidence.excerpt}"\nSource: ${d.evidence.paper_id}` 
+                    : `Relation: ${d.relation}`);
+
             const node = svg.append("g")
                 .selectAll("circle")
                 .data(nodes).enter()
@@ -168,3 +181,44 @@ def view_graph(query: str, user_id: str = Depends(get_user_id)):
 </html>
 """
     return HTMLResponse(content=html)
+
+
+@router.post("/graph-edit/{query}")
+def edit_graph(
+    query: str,
+    request: EditGraphRequest,
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Apply an edit to the graph and save it.
+    """
+    graphs = load_graphs(query, user_id)
+    if not graphs:
+        # If no graph exists, we can't edit it. Or should we create it?
+        # For now, 404.
+        raise HTTPException(status_code=404, detail="Graph not found definition")
+
+    target_graph_key = "knowledge_graph" if request.graph_type == "knowledge" else "citation_graph"
+    current_graph_data = graphs.get(target_graph_key)
+    
+    if not current_graph_data:
+        current_graph_data = {"nodes": [], "links": []}
+
+    try:
+        updated_data = apply_graph_edit(current_graph_data, request.action, request.payload)
+        graphs[target_graph_key] = updated_data
+        
+        # Save back to DB
+        save_graphs(
+            query=query,
+            user_id=user_id,
+            knowledge=graphs["knowledge_graph"],
+            citation=graphs["citation_graph"]
+        )
+        
+        return {"status": "success", "message": f"Applied {request.action}", "updated_graph": updated_data}
+
+    except Exception as e:
+        logger.error(f"Graph edit failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
