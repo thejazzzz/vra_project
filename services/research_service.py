@@ -29,7 +29,7 @@ async def download_pdf(pdf_url: Optional[str]) -> str:
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(pdf_url, timeout=25) as resp:
+            async with session.get(pdf_url, timeout=10) as resp:
                 if resp.status != 200:
                     logger.warning(f"PDF download failed ({resp.status}): {pdf_url}")
                     return ""

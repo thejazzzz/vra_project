@@ -85,6 +85,48 @@ async def run_step(state: VRAState) -> VRAState:
         return state
 
 
+async def run_until_interaction(state: VRAState) -> VRAState:
+    """
+    Executes workflow steps continuously until it reaches a state requiring user interaction
+    (e.g., 'awaiting_graph_review') or a terminal state.
+    """
+    max_steps = 10
+    steps_run = 0
+
+    while steps_run < max_steps:
+        step = state.get("current_step")
+        logger.info(f"🔄 Workflow Loop Step {steps_run+1}: {step}")
+
+        # STOP: User Interaction Required
+        if step in [
+            "awaiting_research_review",
+            "awaiting_graph_review",
+            "awaiting_final_review",
+        ]:
+            break
+
+        # STOP: Terminal States
+        if step in ["completed", "failed", "error"]:
+            break
+
+        # Execute Next Step
+        new_state = await run_step(state)
+        steps_run += 1
+
+        # Check for deadlock (no state change)
+        if new_state.get("current_step") == step:
+            logger.warning(f"Deadlock detected: State {step} did not transition. Stopping.")
+            state = new_state
+            break
+
+        state = new_state
+
+    if steps_run >= max_steps:
+        logger.warning(f"Max steps ({max_steps}) reached. Stopping loop safely.")
+
+    return state
+
+
 async def _handle_analysis_step(state: VRAState) -> VRAState:
     query = state.get("query", "")
     papers = state.get("selected_papers") or []

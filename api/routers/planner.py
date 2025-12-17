@@ -1,5 +1,6 @@
 # File: api/routers/planner.py
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from api.models.research_models import ResearchRequest
 from state.state_schema import VRAState
 from services.state_service import load_state_for_query, save_state_for_query
@@ -7,7 +8,7 @@ from services.research_service import process_research_task
 from agents.planner_agent import planner_agent
 from copy import deepcopy
 
-from workflow import run_step
+from workflow import run_step, run_until_interaction
 import logging
 
 router = APIRouter()
@@ -92,12 +93,8 @@ async def continue_workflow(payload: ResearchRequest):
         )
 
     try:
-        next_step = planner_agent.decide_next_step(state)
-        state["current_step"] = next_step
-
-        updated = await run_step(state)
+        updated = await run_until_interaction(state)
         save_state_for_query(query, updated, USER_ID)
-
         return {"state": updated}
 
     except Exception as e:
@@ -106,3 +103,64 @@ async def continue_workflow(payload: ResearchRequest):
             status_code=500,
             detail=f"Workflow execution failed: {str(e)}"
         )
+
+
+class PaperReviewRequest(BaseModel):
+    query: str
+    selected_paper_ids: list[str]
+    audience: str = "general"
+
+
+@router.post("/review")
+async def review_papers(payload: PaperReviewRequest):
+    query = (payload.query or "").strip()
+    state = _load_or_create_state(query)
+
+    if not state.get("collected_papers"):
+        raise HTTPException(400, "No collected papers to review")
+
+    # Filter papers
+    selected_ids = set(payload.selected_paper_ids)
+    all_papers = state.get("collected_papers", [])
+
+    # Keep only selected papers in the active set
+    # We still keep 'collected_papers' as history if needed, but 'selected_papers' drives the next steps
+    final_selection = [p for p in all_papers if p.get("canonical_id") in selected_ids]
+
+    if not final_selection:
+        raise HTTPException(400, "No papers selected. Cannot proceed.")
+
+    state["selected_papers"] = final_selection
+    state["audience"] = payload.audience
+
+    # Trigger next step: Analysis
+    # We manually set the transition here because this IS the user interaction
+    state["current_step"] = "awaiting_analysis"
+
+    # Save immediately
+    save_state_for_query(query, state, USER_ID)
+
+    # Run loop
+    try:
+        updated = await run_until_interaction(state)
+        save_state_for_query(query, updated, USER_ID)
+        return {"state": updated}
+    except Exception as e:
+        logger.error("Review processing failed", exc_info=True)
+        raise HTTPException(500, f"Failed to process review: {e}")
+@router.get("/status/{query}")
+def get_status(query: str):
+    """
+    Get the current status of the research task for polling.
+    """
+    state_obj = _load_or_create_state(query) # Helper leverages load_state_for_query
+    
+    # Need to handle if state is empty/new
+    current_step = state_obj.get("current_step")
+    
+    return {
+        "current_step": current_step,
+        "papers_count": len(state_obj.get("selected_papers", [])),
+        "draft_report": state_obj.get("draft_report"),
+        "error": state_obj.get("error")
+    }

@@ -34,19 +34,19 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
 
     headers = {"x-api-key": API_KEY} if API_KEY else {}
     
-    max_retries = 3
-    base_delay = 2
+    max_retries = 1
+    base_delay = 1
 
     for attempt in range(max_retries + 1):
         try:
-            resp = requests.get(S2_API_URL, params=params, headers=headers, timeout=12)
+            resp = requests.get(S2_API_URL, params=params, headers=headers, timeout=5)
             
             if resp.status_code == 429:
                 wait_time = int(resp.headers.get("Retry-After", base_delay * (2 ** attempt)))
                 # Cap wait time to avoid hanging too long
-                wait_time = min(wait_time, 30)
+                wait_time = min(wait_time, 5)
                 # Add jitter
-                wait_time += random.uniform(0, 1)
+                wait_time += random.uniform(0, 0.5)
                 
                 logger.warning(f"⚠️ S2 Rate Limit (429). Retrying in {wait_time:.2f}s... (Attempt {attempt+1}/{max_retries})")
                 time.sleep(wait_time)
