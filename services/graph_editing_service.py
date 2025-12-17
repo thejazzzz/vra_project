@@ -1,4 +1,4 @@
-
+#File: services/graph_editing_service.py
 import logging
 from typing import Dict, Any, List
 
@@ -14,8 +14,7 @@ def apply_graph_edit(graph_data: Dict[str, Any], action: str, payload: Dict[str,
     
     # helper to find index
     def find_node_idx(nid):
-        return next((i for i, n in enumerate(nodes) if n["id"] == nid), -1)
-
+        return next((i for i, n in enumerate(nodes) if n.get("id") == nid), -1)
     if action == "add_node":
         new_node = payload.get("node")
         if new_node and new_node.get("id"):
@@ -34,9 +33,9 @@ def apply_graph_edit(graph_data: Dict[str, Any], action: str, payload: Dict[str,
     elif action == "delete_node":
         nid = payload.get("id")
         # Remove node
-        nodes = [n for n in nodes if n["id"] != nid]
+        nodes[:] = [n for n in nodes if n.get("id") != nid]
         # Remove connected links
-        links = [l for l in links if l["source"] != nid and l["target"] != nid]
+        links[:] = [l for l in links if l.get("source") != nid and l.get("target") != nid]
 
     elif action == "add_edge":
         # payload: { "source": "...", "target": "...", "relation": "..." }
@@ -44,14 +43,16 @@ def apply_graph_edit(graph_data: Dict[str, Any], action: str, payload: Dict[str,
         tgt = payload.get("target")
         if src and tgt:
             # Check if exists
-            exists = any(l["source"] == src and l["target"] == tgt for l in links)
+            exists = any(l.get("source") == src and l.get("target") == tgt for l in links)
             if not exists:
-                links.append(payload)
-
+                if find_node_idx(src) == -1 or find_node_idx(tgt) == -1:
+                    logger.warning(f"Cannot add edge: source or target node not found")
+                    return {"nodes": nodes, "links": links}
     elif action == "delete_edge":
         src = payload.get("source")
         tgt = payload.get("target")
-        links = [l for l in links if not (l["source"] == src and l["target"] == tgt)]
+        links[:] = [l for l in links if not (l.get("source") == src and l.get("target") == tgt)]
+        
 
     return {
         "nodes": nodes,

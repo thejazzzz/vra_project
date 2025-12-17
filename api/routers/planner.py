@@ -148,6 +148,46 @@ async def review_papers(payload: PaperReviewRequest):
     except Exception as e:
         logger.error("Review processing failed", exc_info=True)
         raise HTTPException(500, f"Failed to process review: {e}")
+
+
+class GraphReviewRequest(BaseModel):
+    query: str
+    feedback: str = None
+    approved: bool = True
+
+
+@router.post("/review-graph")
+async def review_graph(payload: GraphReviewRequest):
+    query = (payload.query or "").strip()
+    if not query:
+        raise HTTPException(400, "Query required")
+
+    state = _load_or_create_state(query)
+    
+    # Validation: Ensure we are in the right state
+    if state.get("current_step") != "awaiting_graph_review":
+        # Strict check or lenient? Lenient allows recovery. 
+        # But let's log warning.
+        logger.warning(f"Graph review received but state is {state.get('current_step')}")
+
+    # Set next step
+    # We move to Gap Analysis (Level 4) or Reporting (Level 5)
+    # Workflow.py says: awaiting_gap_analysis
+    state["current_step"] = "awaiting_gap_analysis"
+    if payload.feedback:
+        state["user_feedback"] = payload.feedback
+
+    save_state_for_query(query, state, USER_ID)
+
+    try:
+        updated = await run_until_interaction(state)
+        save_state_for_query(query, updated, USER_ID)
+        return {"state": updated}
+    except Exception as e:
+        logger.error("Graph review continuation failed", exc_info=True)
+        raise HTTPException(500, f"Workflow failed: {e}")
+
+
 @router.get("/status/{query}")
 def get_status(query: str):
     """

@@ -48,7 +48,7 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
                 # Add jitter
                 wait_time += random.uniform(0, 0.5)
                 
-                logger.warning(f"⚠️ S2 Rate Limit (429). Retrying in {wait_time:.2f}s... (Attempt {attempt+1}/{max_retries})")
+                logger.warning(f"⚠️ S2 Rate Limit (429). Retrying in {wait_time:.2f}s... (Attempt {attempt+1}/{max_retries+1})")
                 time.sleep(wait_time)
                 continue
                 
@@ -57,11 +57,6 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
             break # Success
             
         except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 429:
-                # Should be handled above, but just in case raise_for_status catches it first
-                logger.warning(f"⚠️ S2 Rate Limit hit via HTTPError: {e}")
-                time.sleep(5)
-                continue
             logger.error(f"Semantic Scholar HTTP error: {e}")
             return []
             

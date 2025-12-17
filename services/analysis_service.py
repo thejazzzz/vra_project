@@ -272,4 +272,4 @@ def generate_report_content(prompt: str) -> str:
 
     except Exception as exc:
         logger.error("Report generation failed: %s", exc)
-        return f"Error communicating with LLM: {exc}"
+        return "Error communicating with LLM. Please check logs for details."

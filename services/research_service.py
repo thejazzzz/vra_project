@@ -233,6 +233,21 @@ async def process_research_task(query: str) -> Dict:
         "storage_failed": failed_storage,
         "embedding_failed": failed_embedding,
         "db_ids": [db_obj.id for db_obj, _ in stored],
-        "papers": papers,
+        # Return the ENRICHED papers from the DB, not the raw input `papers`
+        # This ensures we get the extracted abstract/fulltext if available
+        "papers": [
+            {
+                "canonical_id": db_obj.canonical_id,
+                "title": db_obj.title,
+                "abstract": db_obj.abstract, # The critical field
+                "source": db_obj.paper_metadata.get("source", "unknown"),
+                "url": db_obj.paper_metadata.get("url"),
+                "year": db_obj.paper_metadata.get("year"),
+                "authors": db_obj.paper_metadata.get("authors", []),
+                "citation_count": db_obj.paper_metadata.get("citation_count", 0),
+                "venue": db_obj.paper_metadata.get("venue"),
+            }
+            for db_obj, _ in stored
+        ],
         "error": error_message,
     }

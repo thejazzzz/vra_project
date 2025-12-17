@@ -1,9 +1,9 @@
 # File: api/routers/graph_viewer.py
 from html import escape
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Literal
 from fastapi import APIRouter, HTTPException, Header, Depends, Body
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from services.graph_persistence_service import load_graphs, save_graphs
 from services.graph_editing_service import apply_graph_edit
 import json
@@ -14,10 +14,10 @@ router = APIRouter()
 
 
 class EditGraphRequest(BaseModel):
-    action: str
-    graph_type: str
-    payload: Dict[str, Any]
-
+    """Request model for graph editing operations."""
+    action: str = Field(..., description="Edit action to perform")
+    graph_type: Literal["knowledge", "citation"] = Field(..., description="Target graph type")
+    payload: Dict[str, Any] = Field(..., description="Action-specific payload")
 
 def get_user_id(x_user_id: Optional[str] = Header(None)):
     """
@@ -31,7 +31,6 @@ def view_graph(query: str, user_id: str = Depends(get_user_id)):
 
     if not query or not query.strip():
         raise HTTPException(status_code=400, detail="Invalid query parameter")
-
     graphs = load_graphs(query, user_id)
     if not graphs:
         raise HTTPException(status_code=404, detail="Graphs not found")
@@ -183,6 +182,26 @@ def view_graph(query: str, user_id: str = Depends(get_user_id)):
     return HTMLResponse(content=html)
 
 
+@router.get("/data/{query}")
+def get_graph_data(query: str, user_id: str = Depends(get_user_id)):
+    """
+    Return raw JSON data for the frontend graph viewer.
+    """
+    if not query or not query.strip():
+        raise HTTPException(status_code=400, detail="Invalid query parameter")
+
+    graphs = load_graphs(query, user_id)
+    if not graphs:
+        raise HTTPException(status_code=404, detail="Graphs not found")
+
+    return {
+        "nodes": graphs["knowledge_graph"].get("nodes", []),
+        "edges": graphs["knowledge_graph"].get("links", []),
+        "citation_nodes": graphs["citation_graph"].get("nodes", []),
+        "citation_links": graphs["citation_graph"].get("links", [])
+    }
+
+
 @router.post("/graph-edit/{query}")
 def edit_graph(
     query: str,
@@ -194,11 +213,11 @@ def edit_graph(
     """
     graphs = load_graphs(query, user_id)
     if not graphs:
-        # If no graph exists, we can't edit it. Or should we create it?
-        # For now, 404.
-        raise HTTPException(status_code=404, detail="Graph not found definition")
+        raise HTTPException(status_code=404, detail="Graph not found")
 
     target_graph_key = "knowledge_graph" if request.graph_type == "knowledge" else "citation_graph"
+    if request.graph_type not in ["knowledge", "citation"]:
+        raise HTTPException(status_code=400, detail=f"Invalid graph_type: {request.graph_type}")
     current_graph_data = graphs.get(target_graph_key)
     
     if not current_graph_data:
@@ -220,5 +239,5 @@ def edit_graph(
 
     except Exception as e:
         logger.error(f"Graph edit failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to apply graph edit")
 
