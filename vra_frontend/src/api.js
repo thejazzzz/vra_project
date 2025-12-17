@@ -22,8 +22,7 @@ export const plannerApi = {
 };
 
 export const graphApi = {
-    // Backend guide says: POST /graphs/graphs/{query} - Wait, file says GET /graphs/{query}
-    // Using the one found in graphs.py
+    // Backend endpoint: GET /graphs/graphs/{query} (from graphs.py)
     getData: (query) => api.get(`/graphs/graphs/${encodeURIComponent(query)}`),
 };
 

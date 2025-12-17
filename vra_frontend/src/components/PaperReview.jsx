@@ -146,18 +146,22 @@ export default function PaperReview({ papers = [], onConfirm }) {
                                     }}
                                 >
                                     {paper.abstract
-                                        ? paper.abstract.slice(0, 180) + "..."
+                                        ? paper.abstract.length > 180
+                                            ? paper.abstract.slice(0, 180) + "..."
+                                            : paper.abstract
                                         : "No abstract available."}
-                                    <span
-                                        style={{
-                                            color: "hsl(var(--primary))",
-                                            marginLeft: "0.5rem",
-                                            fontSize: "0.85rem",
-                                            fontWeight: 500,
-                                        }}
-                                    >
-                                        Read more
-                                    </span>
+                                    {paper.abstract && paper.abstract.length > 180 && (
+                                        <span
+                                            style={{
+                                                color: "hsl(var(--primary))",
+                                                marginLeft: "0.5rem",
+                                                fontSize: "0.85rem",
+                                                fontWeight: 500,
+                                            }}
+                                        >
+                                            Read more
+                                        </span>
+                                    )}
                                 </p>
 
                                 <div
@@ -169,6 +173,7 @@ export default function PaperReview({ papers = [], onConfirm }) {
                                         alignItems: "center",
                                     }}
                                 >
+
                                     <span
                                         style={{
                                             background:
@@ -262,8 +267,7 @@ export default function PaperReview({ papers = [], onConfirm }) {
                                     marginBottom: "1.5rem",
                                 }}
                             >
-                                <span>{expandedPaper.year}</span>
-                                <span>•</span>
+                                <span>{expandedPaper.year || "N/A"}</span>                                <span>•</span>
                                 <span>
                                     {expandedPaper.authors
                                         ? expandedPaper.authors

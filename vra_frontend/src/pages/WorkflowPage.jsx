@@ -1,4 +1,4 @@
-//File: src/pages/WorkFlowPage
+//File: src/pages/WorkflowPage
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { plannerApi, graphApi } from "../api";
