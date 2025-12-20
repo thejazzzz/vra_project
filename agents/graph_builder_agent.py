@@ -3,6 +3,7 @@ import logging
 from typing import Dict
 from services.graph_service import build_knowledge_graph, build_citation_graph, enrich_knowledge_graph
 from services.graph_persistence_service import save_graphs
+from services.author_graph_service import build_author_graph
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,16 @@ class GraphBuilderAgent:
             save_graphs(query, user_id, kg, citation_graph)
         except Exception as e:
             logger.error(f"Failed to persist graphs for query={query}: {e}")
+
+        # ----------------------------
+        # Build Author Graph (Phase 3)
+        # ----------------------------
+        try:
+            author_graph = build_author_graph(selected_papers)
+            state["author_graph"] = author_graph
+        except Exception as e:
+            logger.error(f"Failed to build author graph for query={query}: {e}")
+            state["author_graph"] = None
 
         state["knowledge_graph"] = kg
         state["citation_graph"] = citation_graph

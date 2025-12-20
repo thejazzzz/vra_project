@@ -3,9 +3,11 @@ import logging
 import asyncio
 from state.state_schema import VRAState
 from agents.graph_builder_agent import graph_builder_agent
+from agents.paper_summarization_agent import paper_summarization_agent
 from agents.gap_analysis_agent import gap_analysis_agent
 from agents.reporting_agent import reporting_agent
 from services.analysis_service import run_analysis_task
+from services.trend_analysis_service import detect_concept_trends
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +16,22 @@ async def run_step(state: VRAState) -> VRAState:
     try:
         current = state.get("current_step")
         logger.info(f"🔄 Workflow step: {current}")
+
+        # ----------------------------------------------------
+        # Phase 3.1 Safety: Transition Validation
+        # ----------------------------------------------------
+        ALLOWED_STEPS = {
+            "initial", "awaiting_research_review", "awaiting_analysis",
+            "awaiting_paper_summaries", "awaiting_graphs", "awaiting_graph_review",
+            "awaiting_gap_analysis", "awaiting_report", "awaiting_final_review",
+            "completed", "failed", "error"
+        }
+        
+        if current not in ALLOWED_STEPS:
+             logger.error(f"Illegal workflow state: {current}")
+             state["error"] = f"Illegal workflow state: {current}"
+             state["current_step"] = "failed"
+             return state
 
         # ---------------------------------------------------------
         # STEP 1 — Human selects papers → move to analysis
@@ -25,8 +43,34 @@ async def run_step(state: VRAState) -> VRAState:
         # ---------------------------------------------------------
         # STEP 2 — GLOBAL ANALYSIS
         # ---------------------------------------------------------
+        # ---------------------------------------------------------
+        # STEP 2 — GLOBAL ANALYSIS
+        # ---------------------------------------------------------
         if current == "awaiting_analysis":
             return await _handle_analysis_step(state)
+
+        # ---------------------------------------------------------
+        # STEP 2.5 — PAPER SUMMARIZATION (Phase 3)
+        # ---------------------------------------------------------
+        if current == "awaiting_paper_summaries":
+            logger.info("📄 Generating structured paper summaries...")
+            state = await asyncio.to_thread(paper_summarization_agent.run, state)
+            
+            # Run Trend Analysis (Phase 3) - Depends on summaries/concepts
+            logger.info("📈 Detecting temporal trends...")
+            try:
+                trends = detect_concept_trends(
+                    state.get("selected_papers", []),
+                    state.get("paper_concepts", {})
+                )
+                state["concept_trends"] = trends
+            except Exception as e:
+                logger.warning(f"Trend analysis failed: {e}")
+                state["concept_trends"] = {}
+
+
+            state["current_step"] = "awaiting_graphs"
+            return state
 
         # ---------------------------------------------------------
         # STEP 3 — BUILD GRAPHS
@@ -38,8 +82,8 @@ async def run_step(state: VRAState) -> VRAState:
         # STEP 4 — WAIT FOR GRAPH REVIEW
         # ---------------------------------------------------------
         if current == "awaiting_graph_review":
-            # This state waits for user signal.
-            # If user approves, they might set state to 'awaiting_gap_analysis' or 'awaiting_report'
+            if state.get("graph_approved", False):
+                 state["current_step"] = "awaiting_gap_analysis"
             return state
 
         # ---------------------------------------------------------
@@ -141,7 +185,7 @@ async def _handle_analysis_step(state: VRAState) -> VRAState:
     try:
         analysis = await run_analysis_task(query, papers, audience=audience)
         state["global_analysis"] = analysis
-        state["current_step"] = "awaiting_graphs"
+        state["current_step"] = "awaiting_paper_summaries"
     except Exception as e:
         logger.error(f"Analysis step failed: {e}", exc_info=True)
         state["error"] = f"Analysis step failed: {str(e)}"

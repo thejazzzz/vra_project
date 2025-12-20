@@ -6,10 +6,21 @@ class VRAState(TypedDict, total=False):
     audience: str
 
 
+
     # Paper data
     collected_papers: List[Dict[str, Any]]
     selected_papers: List[Dict[str, Any]]
     added_papers: List[Dict[str, Any]]
+
+    # Phase 3 additions
+    paper_structured_summaries: Dict[str, Dict[str, str]]
+    research_gaps: List[Dict[str, Any]]
+    author_graph: Dict[str, Any]
+    concept_trends: Dict[str, Any]
+    
+    # Safety & Versioning (Phase 3.1)
+    graph_approved: bool
+    workflow_version: str
 
     # Per-paper analysis
     paper_summaries: Dict[str, str]        # {paper_id: summary}
