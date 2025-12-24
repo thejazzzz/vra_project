@@ -38,3 +38,36 @@ async def research_endpoint(payload: ResearchRequest) -> ResearchResponse:
             status_code=500,
             detail="Internal server error"
         )
+
+from api.models.research_models import ManualPaperRequest
+
+@router.post("/manual", response_model=dict)
+async def add_manual_paper_endpoint(payload: ManualPaperRequest) -> dict:    
+    from services.research_service import add_manual_paper
+    try:
+        result = await add_manual_paper(
+            query=payload.query,
+            title=payload.title,
+            abstract=payload.abstract,
+            url=payload.url,
+            authors=payload.authors,
+            year=payload.year,
+            source=payload.source
+        )
+        
+        if not result.get("success", False):
+            raise HTTPException(
+                status_code=500,
+                detail=result.get("error", "Failed to add manual paper")
+            )
+        return result
+    
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        logger.error("Error in add_manual_paper_endpoint", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error"
+        )
+

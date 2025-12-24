@@ -24,6 +24,12 @@ export const plannerApi = {
 export const graphApi = {
     // Backend endpoint: GET /graphs/graphs/{query} (from graphs.py)
     getData: (query) => api.get(`/graphs/graphs/${encodeURIComponent(query)}`),
+    // New granular endpoints
+    getAuthors: (query) =>
+        api.get(`/graphs/authors/${encodeURIComponent(query)}`),
+    getTrends: (query) =>
+        api.get(`/graphs/trends/${encodeURIComponent(query)}`),
+    getGaps: (query) => api.get(`/graphs/gaps/${encodeURIComponent(query)}`),
 };
 
 export default api;

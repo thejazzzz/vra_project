@@ -10,3 +10,12 @@ class ResearchRequest(BaseModel):
 class ResearchResponse(BaseModel):
     status: str
     data: Dict[str, Any]
+
+class ManualPaperRequest(BaseModel):
+    query: str
+    title: str
+    abstract: str
+    url: str = ""
+    authors: list[str] = []
+    year: int = 2024
+    source: str = "user_upload"

@@ -251,3 +251,84 @@ async def process_research_task(query: str) -> Dict:
         ],
         "error": error_message,
     }
+
+
+async def add_manual_paper(
+    query: str,
+    title: str,
+    abstract: str,
+    url: str = "",
+    authors: List[str] = [],
+    year: int = 2024,
+    source: str = "user_upload"
+) -> Dict:
+    """
+    Manually add a paper to the database and vector store.
+    """
+    db = SessionLocal()
+    try:
+        # Generate Canonical ID
+        canonical_id = build_canonical_id(
+            primary_id=url or title, # Use title as fallback if no URL
+            title=title,
+            source=source
+        )
+        
+        # Check if exists
+        existing = db.query(Paper).filter(Paper.canonical_id == canonical_id).one_or_none()
+        
+        if existing:
+            # Update abstract if provided and missing
+            if not existing.abstract and abstract:
+                existing.abstract = abstract
+                flag_modified(existing, "paper_metadata")
+            
+            db_obj = existing
+        else:
+            # Create new
+            db_obj = Paper(
+                canonical_id=canonical_id,
+                paper_id=f"manual_{hashlib.md5(title.encode()).hexdigest()[:8]}",
+                title=title,
+                abstract=abstract,
+                raw_text=abstract, # Treat abstract as raw text for now
+                paper_metadata={
+                    "source": source,
+                    "url": url,
+                    "authors": authors,
+                    "year": year,
+                    "manual_entry": True
+                }
+            )
+            db.add(db_obj)
+        
+        db.commit()
+        db.refresh(db_obj)
+
+        # Embed in Chroma
+        vector_client = get_client()
+        chroma_id = f"paper-{db_obj.id}"
+        vector_client.store(
+            chroma_id,
+            abstract,
+            {"paper_db_id": db_obj.id, "canonical_id": db_obj.canonical_id}
+        )
+        
+        return {
+            "success": True,
+            "paper": {
+                "canonical_id": db_obj.canonical_id,
+                "title": db_obj.title,
+                "abstract": db_obj.abstract,
+                "source": source,
+                "url": url,
+                "year": year,
+                "authors": authors
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to add manual paper: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()

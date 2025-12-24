@@ -22,6 +22,15 @@
     font-family: "Inter", system-ui, -apple-system, sans-serif;
     line-height: 1.5;
     color-scheme: dark;
+
+    /* Semantic Colors (Graph & Trends) */
+    --color-concept: 210 100% 60%; /* Blue */
+    --color-paper: 220 10% 60%; /* Gray */
+    --color-author: 270 80% 60%; /* Purple */
+
+    --status-emerging: 150 100% 40%; /* Green */
+    --status-stable: 45 100% 50%; /* Yellow/Gold */
+    --status-saturated: 0 90% 60%; /* Red */
 }
 
 body {

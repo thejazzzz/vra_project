@@ -194,13 +194,5 @@ def get_status(query: str):
     Get the current status of the research task for polling.
     """
     state_obj = _load_or_create_state(query) # Helper leverages load_state_for_query
-    
-    # Need to handle if state is empty/new
-    current_step = state_obj.get("current_step")
-    
-    return {
-        "current_step": current_step,
-        "papers_count": len(state_obj.get("selected_papers", [])),
-        "draft_report": state_obj.get("draft_report"),
-        "error": state_obj.get("error")
-    }
+    return {"state": state_obj}
+

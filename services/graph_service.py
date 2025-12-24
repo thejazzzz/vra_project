@@ -111,9 +111,11 @@ def build_knowledge_graph(
             except:
                 successors = []
             
-            paper_count = sum(1 for n in successors if G.nodes[n].get("type") == "paper")
+            paper_nodes = [n for n in successors if G.nodes[n].get("type") == "paper"]
+            paper_count = len(paper_nodes)
             
             G.nodes[node]["paper_frequency"] = paper_count
+            G.nodes[node]["paper_ids"] = paper_nodes
             concept_frequencies[node] = paper_count
             if paper_count > max_freq:
                 max_freq = paper_count

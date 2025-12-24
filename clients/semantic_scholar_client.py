@@ -39,7 +39,7 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
 
     for attempt in range(max_retries + 1):
         try:
-            resp = requests.get(S2_API_URL, params=params, headers=headers, timeout=5)
+            resp = requests.get(S2_API_URL, params=params, headers=headers, timeout=30)
             
             if resp.status_code == 429:
                 wait_time = int(resp.headers.get("Retry-After", base_delay * (2 ** attempt)))
