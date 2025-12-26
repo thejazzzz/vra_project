@@ -16,6 +16,21 @@ export interface ResearchGap {
     [key: string]: any;
 }
 
+export interface Hypothesis {
+    id: string;
+    statement: string;
+    novelty_score: number;
+    testability_score: number;
+    supporting_evidence: string;
+}
+
+export interface Review {
+    hypothesis_id: string;
+    critique: string;
+    suggestions: string;
+    score: number;
+}
+
 export interface ResearchState {
     query: string;
     audience: string;
@@ -23,27 +38,37 @@ export interface ResearchState {
 
     // Data
     papers: Paper[];
-    selectedPapers: string[];
+    selectedPapers: Paper[];
 
     // Graphs & Analysis
     knowledgeGraph: { nodes: any[]; links: any[] };
     authorGraph: { nodes: any[]; links: any[] };
     trends: Record<string, any>;
-    gaps: any[];
+    gaps: ResearchGap[];
     draftReport: string;
     globalAnalysis: any;
 
+    // Phase 4
+    hypotheses?: Hypothesis[];
+    reviews?: Review[];
+
+    stats?: {
+        papers_found: number;
+        concepts_extracted: number;
+    };
+    report?: string;
+    error: string | null;
+
     // UI State
     isLoading: boolean;
-    error: string | null;
     isSidebarOpen: boolean;
 
     // Actions
-    syncState: (queryId: string) => Promise<void>;
+    addPaper: (payload: AddPaperPayload) => Promise<void>;
+    syncState: (query: string) => Promise<void>;
     startResearch: (query: string) => Promise<boolean>;
     submitReview: (payload: ReviewPayload) => Promise<void>;
     submitGraphReview: (payload: GraphReviewPayload) => Promise<void>;
-    addPaper: (payload: AddPaperPayload) => Promise<void>;
     toggleSidebar: () => void;
 }
 
@@ -86,6 +111,8 @@ export interface BackendResearchState {
     global_analysis: any;
     research_gaps: any[];
     concept_trends: Record<string, any>;
+    hypotheses?: any[];
+    reviews?: any[];
     author_graph: { nodes: any[]; links: any[] };
     knowledge_graph: { nodes: any[]; links: any[] };
     draft_report: string;
@@ -94,6 +121,7 @@ export interface BackendResearchState {
 
 export interface PlanResponse {
     state: BackendResearchState;
+    session_id: string;
 }
 
 export interface StatusResponse {
@@ -106,4 +134,19 @@ export interface ReviewResponse {
 
 export interface GraphReviewResponse {
     state: BackendResearchState;
+}
+
+export interface LoginRequest {
+    email: string;
+}
+
+export interface LoginResponse {
+    access_token: string;
+    token_type: string;
+}
+
+export interface UserResponse {
+    id: string;
+    email: string;
+    role: string;
 }

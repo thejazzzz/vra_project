@@ -36,6 +36,8 @@ export const useResearchStore = create<ResearchState>((set, get) => {
         gaps: [],
         draftReport: "",
         globalAnalysis: {},
+        hypotheses: [],
+        reviews: [],
         isLoading: false,
         error: null,
         isSidebarOpen: true,
@@ -73,6 +75,8 @@ export const useResearchStore = create<ResearchState>((set, get) => {
                     globalAnalysis: state.global_analysis || {},
                     gaps: state.research_gaps || [],
                     trends: state.concept_trends || {},
+                    hypotheses: state.hypotheses || [],
+                    reviews: state.reviews || [],
                     authorGraph:
                         state.author_graph && state.author_graph.nodes
                             ? state.author_graph

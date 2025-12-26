@@ -54,43 +54,45 @@ export default function AuthorNetworkPage() {
                 />
             </div>
 
-            <Card className="w-80 flex flex-col">
-                <CardHeader className="pb-2 text-primary">
+            <Card className="w-80 flex flex-col h-full overflow-hidden">
+                <CardHeader className="pb-2 text-primary shrink-0">
                     <CardTitle className="flex items-center gap-2 text-lg">
                         <Crown className="text-yellow-500 h-5 w-5" /> Key
                         Influencers
                     </CardTitle>
                 </CardHeader>
-                <ScrollArea className="flex-1">
-                    <CardContent className="space-y-2">
-                        {topAuthors.map((author: any, idx: number) => (
-                            <div
-                                key={author.id}
-                                className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors cursor-default group"
-                            >
-                                <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
-                                    {idx + 1}
-                                </div>
-                                <div>
-                                    <div className="text-sm font-medium leading-none">
-                                        {author.id}
+                <div className="flex-1 min-h-0 bg-transparent">
+                    <ScrollArea className="h-full">
+                        <CardContent className="space-y-2">
+                            {topAuthors.map((author: any, idx: number) => (
+                                <div
+                                    key={author.id}
+                                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors cursor-default group"
+                                >
+                                    <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
+                                        {idx + 1}
                                     </div>
-                                    <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                                        <Award className="h-3 w-3" />
-                                        {(author.influence_score || 0).toFixed(
-                                            2
-                                        )}
+                                    <div>
+                                        <div className="text-sm font-medium leading-none">
+                                            {author.id}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                            <Award className="h-3 w-3" />
+                                            {(
+                                                author.influence_score || 0
+                                            ).toFixed(2)}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
-                        {topAuthors.length === 0 && (
-                            <div className="text-center text-muted-foreground py-8 text-sm">
-                                No data available
-                            </div>
-                        )}
-                    </CardContent>
-                </ScrollArea>
+                            ))}
+                            {topAuthors.length === 0 && (
+                                <div className="text-center text-muted-foreground py-8 text-sm">
+                                    No data available
+                                </div>
+                            )}
+                        </CardContent>
+                    </ScrollArea>
+                </div>
             </Card>
         </div>
     );

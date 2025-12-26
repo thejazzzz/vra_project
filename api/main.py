@@ -24,7 +24,9 @@ from api.routers import (
     reporting,
     graphs,
     graph_viewer,
+    auth, # [NEW]
 )
+from api.middleware.rate_limit import RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +66,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add Rate Limiting (Global)
+limiter = RateLimitMiddleware(requests_per_minute=100)
+app.middleware("http")(limiter)
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    error_id = os.urandom(4).hex()
+    logger.error(f"🔥 UNHANDLED ERROR [{error_id}]: {str(exc)}\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal Server Error",
+            "error_id": error_id,
+            "message": "An unexpected error occurred. Please contact support with the error_id."
+        },
+    )
+
 app.include_router(health.router)
 app.include_router(planner.router, prefix="/planner", tags=["Planner Agent"])
 app.include_router(research.router, prefix="/research", tags=["Research Agent"])
@@ -71,6 +95,7 @@ app.include_router(analysis.router, prefix="/analysis", tags=["Analysis Agent"])
 app.include_router(reporting.router, prefix="/reporting", tags=["Reporting Agent"])
 app.include_router(graphs.router, prefix="/graphs", tags=["Graphs"])
 app.include_router(graph_viewer.router, prefix="/graph-viewer", tags=["Graph Viewer"])
+app.include_router(auth.router, tags=["Authentication"]) # [NEW]
 
 
 @app.get("/")

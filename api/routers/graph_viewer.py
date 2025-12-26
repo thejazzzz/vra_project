@@ -9,8 +9,15 @@ from services.graph_editing_service import apply_graph_edit
 import json
 import logging
 
+from clients.chroma_client import get_client
+from api.dependencies.auth import get_current_user, get_db
+from database.models.auth_models import User
+from sqlalchemy.orm import Session
+from services.audit_service import log_action
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
 
 
 class EditGraphRequest(BaseModel):
@@ -19,16 +26,13 @@ class EditGraphRequest(BaseModel):
     graph_type: Literal["knowledge", "citation"] = Field(..., description="Target graph type")
     payload: Dict[str, Any] = Field(..., description="Action-specific payload")
 
-def get_user_id(x_user_id: Optional[str] = Header(None)):
-    """
-    Temporary user-id resolver.
-    """
-    return x_user_id or "demo-user"
+
 
 
 @router.get("/graph-view/{query}", response_class=HTMLResponse)
-def view_graph(query: str, user_id: str = Depends(get_user_id)):
+def view_graph(query: str, current_user: User = Depends(get_current_user)):
 
+    user_id = current_user.id
     if not query or not query.strip():
         raise HTTPException(status_code=400, detail="Invalid query parameter")
     graphs = load_graphs(query, user_id)
@@ -183,12 +187,14 @@ def view_graph(query: str, user_id: str = Depends(get_user_id)):
 
 
 @router.get("/data/{query}")
-def get_graph_data(query: str, user_id: str = Depends(get_user_id)):
+def get_graph_data(query: str, current_user: User = Depends(get_current_user)):
     """
     Return raw JSON data for the frontend graph viewer.
     """
     if not query or not query.strip():
         raise HTTPException(status_code=400, detail="Invalid query parameter")
+
+    user_id = current_user.id
 
     graphs = load_graphs(query, user_id)
     if not graphs:
@@ -206,11 +212,13 @@ def get_graph_data(query: str, user_id: str = Depends(get_user_id)):
 def edit_graph(
     query: str,
     request: EditGraphRequest,
-    user_id: str = Depends(get_user_id)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Apply an edit to the graph and save it.
     """
+    user_id = current_user.id
     graphs = load_graphs(query, user_id)
     if not graphs:
         raise HTTPException(status_code=404, detail="Graph not found")
@@ -235,9 +243,57 @@ def edit_graph(
             citation=graphs["citation_graph"]
         )
         
+        # Audit Log (Isolated or Strict)
+        try:
+            log_action(
+                db,
+                user_id=user_id,
+                action="GRAPH_EDIT",
+                target_id=query,
+                payload={"graph": request.graph_type, "action": request.action}
+            )
+        except Exception as audit_err:
+            import os
+            is_strict_audit = os.getenv("AUDIT_STRICT", "false").lower() == "true"
+            if is_strict_audit:
+                logger.critical(f"AUDIT FAILURE (STRICT MODE): Failed to log graph edit for user {user_id}. Error: {audit_err}")
+                raise HTTPException(status_code=500, detail="Audit log failure: Action aborted due to strict compliance.")
+            else:
+                # Non-strict: Log error but allow operation to proceed
+                logger.error(f"AUDIT FAILURE (NON-STRICT): Failed to log graph edit for user {user_id}. proceeding... Error: {audit_err}")
+                # TODO: Emit metric or alert to monitoring system here
+        
         return {"status": "success", "message": f"Applied {request.action}", "updated_graph": updated_data}
 
     except Exception as e:
         logger.error(f"Graph edit failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to apply graph edit")
+
+
+@router.get("/context/{concept}")
+def get_concept_context(
+    concept: str, 
+    n_results: int = 3,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Efficiently retrieve semantic context for a concept from ChromaDB.
+    Returns raw snippets (abstracts) where the concept is discussed.
+    """
+    if not concept or not concept.strip():
+        raise HTTPException(status_code=400, detail="Invalid concept")
+
+    # Log access for audit and to use the current_user variable
+    logger.info(f"User {current_user.id} fetching context for concept: {concept}")
+
+    try:
+        client = get_client()
+        # Search for the concept string in the vector store
+        snippets = client.search(concept, n_results=n_results)
+        return {"concept": concept, "snippets": snippets}
+    except Exception as e:
+        logger.error(f"Context retrieval failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve context")
+
+
 

@@ -42,7 +42,7 @@ export function PaperReviewDialog({ query }: PaperReviewDialogProps) {
         title: "",
         abstract: "",
         url: "",
-        year: new Date().getFullYear(),
+        year: new Date().getFullYear().toString(),
         authors: "",
     });
 
@@ -75,30 +75,34 @@ export function PaperReviewDialog({ query }: PaperReviewDialogProps) {
     const handleAddPaper = async () => {
         if (!newPaper.title || !newPaper.abstract) return;
 
-        await addPaper({
-            query,
-            title: newPaper.title,
-            abstract: newPaper.abstract,
-            url: newPaper.url,
-            year: Number(newPaper.year),
-            authors: newPaper.authors
-                .split(",")
-                .map((a) => a.trim())
-                .filter((a) => a),
-            source: "user_upload",
-        });
+        try {
+            await addPaper({
+                query,
+                title: newPaper.title,
+                abstract: newPaper.abstract,
+                url: newPaper.url,
+                year: newPaper.year,
+                authors: newPaper.authors
+                    .split(",")
+                    .map((a) => a.trim())
+                    .filter((a) => a),
+                source: "user_upload",
+            });
 
-        // Reset and switch back
-        setNewPaper({
-            title: "",
-            abstract: "",
-            url: "",
-            year: new Date().getFullYear(),
-            authors: "",
-        });
-        setActiveTab("review");
+            // Reset and switch back only on success
+            setNewPaper({
+                title: "",
+                abstract: "",
+                url: "",
+                year: new Date().getFullYear().toString(),
+                authors: "",
+            });
+            setActiveTab("review");
+        } catch (error) {
+            console.error("Failed to add paper:", error);
+            // Consider adding user-facing error notification here
+        }
     };
-
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>

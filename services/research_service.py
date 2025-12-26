@@ -166,9 +166,13 @@ async def process_research_task(query: str) -> Dict:
                         title=title,
                         abstract=abstract,
                         raw_text=fulltext,
+                        published_year=paper.get("year"), # Explicitly set column
+                        arxiv_id=paper.get("paper_id") if paper.get("source") == "arxiv" else None,
                         paper_metadata={
                             paper.get("source", "unknown"): paper,
                             "pdf_hashes": hashes,
+                            "year": paper.get("year"), # redundant but safe
+                            "authors": paper.get("authors", [])
                         },
                     )
                     db.add(db_obj)

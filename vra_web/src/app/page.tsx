@@ -1,131 +1,125 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useResearchStore } from "@/lib/store";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
-import { Sparkles, ArrowRight, Loader2 } from "lucide-react";
+    ArrowRight,
+    BrainCircuit,
+    Network,
+    BookOpen,
+    Layers,
+} from "lucide-react";
 
 export default function LandingPage() {
-    const router = useRouter();
-    const [inputQuery, setInputQuery] = useState("");
-    const { startResearch, isLoading, error } = useResearchStore();
-
-    const handleStart = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!inputQuery.trim()) return;
-
-        try {
-            const success = await startResearch(inputQuery);
-            if (success) {
-                router.push(`/research/${encodeURIComponent(inputQuery)}`);
-            }
-            // Error state will be displayed by the error UI below
-        } catch (err) {
-            // Error is handled by the store
-            console.error("Failed to start research:", err);
-        }
-    };
-
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background text-foreground relative overflow-hidden">
-            {/* Ambient Background */}
-            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary/20 via-background to-background -z-10" />
-
-            <div className="max-w-2xl w-full space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-700">
-                <div className="text-center space-y-2">
-                    <div className="inline-flex items-center justify-center p-2 bg-primary/10 rounded-full mb-4 ring-1 ring-primary/20">
-                        <Sparkles className="w-5 h-5 text-primary mr-2" />
-                        <span className="text-sm font-medium text-primary">
-                            Virtual Research Assistant
-                        </span>
-                    </div>
-                    <h1 className="text-4xl md:text-6xl font-bold tracking-tight">
-                        Research Intelligence <br />
-                        <span className="text-primary bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-500">
-                            Reimagined
-                        </span>
-                    </h1>
-                    <p className="text-muted-foreground text-lg max-w-lg mx-auto">
-                        Automated multi-agent research pipelines. From query to
-                        comprehensive report in minutes.
-                    </p>
-                </div>
-
-                <Card className="border-primary/20 bg-card/50 backdrop-blur">
-                    <CardHeader>
-                        <CardTitle>Start a New Investigation</CardTitle>
-                        <CardDescription>
-                            Enter a research topic, question, or hypothesis.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <form onSubmit={handleStart} className="flex gap-4">
-                            <Input
-                                placeholder="e.g., 'Impact of LLMs on Clinical Decision Support'..."
-                                className="flex-1"
-                                value={inputQuery}
-                                onChange={(e) => setInputQuery(e.target.value)}
-                                disabled={isLoading}
-                                suppressHydrationWarning
-                            />
-                            <Button
-                                type="submit"
-                                disabled={isLoading}
-                                className="min-w-[120px]"
-                                suppressHydrationWarning
-                            >
-                                {isLoading ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Init...
-                                    </>
-                                ) : (
-                                    <>
-                                        Analyze{" "}
-                                        <ArrowRight className="ml-2 h-4 w-4" />
-                                    </>
-                                )}
-                            </Button>
-                        </form>
-                        {error && (
-                            <p className="text-sm text-destructive mt-3 flex items-center">
-                                <span className="w-1.5 h-1.5 rounded-full bg-destructive mr-2" />
-                                {error}
+        <div className="flex min-h-screen flex-col bg-background">
+            <header className="px-4 lg:px-6 h-14 flex items-center border-b">
+                <Link className="flex items-center justify-center" href="/">
+                    <BrainCircuit className="h-6 w-6 text-primary" />
+                    <span className="ml-2 text-lg font-bold">VRA</span>
+                </Link>
+                <nav className="ml-auto flex gap-4 sm:gap-6">
+                    <Link
+                        className="text-sm font-medium hover:underline underline-offset-4"
+                        href="#features"
+                    >
+                        Features
+                    </Link>
+                    <Link
+                        className="text-sm font-medium hover:underline underline-offset-4"
+                        href="/login"
+                    >
+                        Sign In
+                    </Link>
+                </nav>
+            </header>
+            <main className="flex-1">
+                <section className="w-full py-12 md:py-24 lg:py-32 xl:py-48 flex flex-col items-center text-center px-4 md:px-6">
+                    <div className="container max-w-4xl space-y-6">
+                        <div className="space-y-2">
+                            <h1 className="text-4xl font-extrabold tracking-tighter sm:text-5xl md:text-6xl lg:text-7xl bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">
+                                Virtual Research Assistant
+                            </h1>
+                            <p className="mx-auto max-w-[700px] text-gray-400 md:text-xl">
+                                Accelerate your academic research with AI-driven
+                                insights, automated gap analysis, and
+                                interactive knowledge graphs.
                             </p>
-                        )}
-                    </CardContent>
-                </Card>
+                        </div>
+                        <div className="space-x-4">
+                            <Link href="/login">
+                                <Button size="lg" className="h-12 px-8">
+                                    Start a New Research Session
+                                    <ArrowRight className="ml-2 h-4 w-4" />
+                                </Button>
+                            </Link>
+                        </div>
+                    </div>
+                </section>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center text-sm text-muted-foreground">
-                    <div className="p-4 rounded-lg bg-secondary/20">
-                        <strong className="block text-foreground mb-1">
-                            Deep Search
-                        </strong>
-                        Aggregates papers from trusted sources.
+                <section
+                    id="features"
+                    className="w-full py-12 md:py-24 lg:py-32 bg-muted/20"
+                >
+                    <div className="container px-4 md:px-6 mx-auto">
+                        <h2 className="text-3xl font-bold tracking-tighter text-center mb-12">
+                            Key Capabilities
+                        </h2>
+                        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className="flex flex-col items-center space-y-3 p-6 border rounded-lg bg-background/50">
+                                <Network className="h-12 w-12 text-primary mb-2" />
+                                <h3 className="text-xl font-bold">
+                                    Knowledge Graphs
+                                </h3>
+                                <p className="text-muted-foreground text-center">
+                                    Visualize connections between papers,
+                                    authors, and concepts to find hidden
+                                    relationships.
+                                </p>
+                            </div>
+                            <div className="flex flex-col items-center space-y-3 p-6 border rounded-lg bg-background/50">
+                                <Layers className="h-12 w-12 text-primary mb-2" />
+                                <h3 className="text-xl font-bold">
+                                    Gap Analysis
+                                </h3>
+                                <p className="text-muted-foreground text-center">
+                                    Automatically identify unexplored areas and
+                                    structural gaps in the current literature.
+                                </p>
+                            </div>
+                            <div className="flex flex-col items-center space-y-3 p-6 border rounded-lg bg-background/50">
+                                <BookOpen className="h-12 w-12 text-primary mb-2" />
+                                <h3 className="text-xl font-bold">
+                                    Automated Reporting
+                                </h3>
+                                <p className="text-muted-foreground text-center">
+                                    Generate comprehensive literature reviews
+                                    and research proposals in minutes.
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                    <div className="p-4 rounded-lg bg-secondary/20">
-                        <strong className="block text-foreground mb-1">
-                            Graph Analysis
-                        </strong>
-                        Maps concepts and authors dynamically.
-                    </div>
-                    <div className="p-4 rounded-lg bg-secondary/20">
-                        <strong className="block text-foreground mb-1">
-                            Gap Identification
-                        </strong>
-                        Finds structural opportunities using AI.
-                    </div>
-                </div>
-            </div>
+                </section>
+            </main>
+            <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
+                <p className="text-xs text-muted-foreground">
+                    © 2024 VRA Project. All rights reserved.
+                </p>
+                <nav className="sm:ml-auto flex gap-4 sm:gap-6">
+                    <Link
+                        className="text-xs hover:underline underline-offset-4"
+                        href="/terms"
+                    >
+                        Terms of Service
+                    </Link>
+                    <Link
+                        className="text-xs hover:underline underline-offset-4"
+                        href="/privacy"
+                    >
+                        Privacy
+                    </Link>
+                </nav>
+            </footer>
         </div>
     );
 }

@@ -3,6 +3,7 @@ from typing import TypedDict, List, Optional, Dict, Any
 
 class VRAState(TypedDict, total=False):
     query: str
+    user_id: str
     audience: str
 
 
@@ -40,6 +41,10 @@ class VRAState(TypedDict, total=False):
     # HITL
     current_step: str
     user_feedback: Optional[str]
+
+    # Phase 4 additions
+    hypotheses: List[Dict[str, Any]]
+    reviews: List[Dict[str, Any]]
 
     # Error handling
     error: Optional[str]

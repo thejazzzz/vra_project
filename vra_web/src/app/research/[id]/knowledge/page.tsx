@@ -1,7 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useParams } from "next/navigation";
 import { useResearchStore } from "@/lib/store";
+import { graphApi } from "@/lib/api";
 import { useMemo, useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,7 +21,7 @@ export default function KnowledgeGraphPage() {
         useResearchStore();
     const [selectedNode, setSelectedNode] = useState<any>(null);
     const [searchTerm, setSearchTerm] = useState("");
-    const fgRef = useRef<any>();
+    const fgRef = useRef<any>(null);
 
     // Prepare Data
     const graphData = useMemo(() => {
@@ -43,6 +45,26 @@ export default function KnowledgeGraphPage() {
         }
     }, []);
 
+    const [contextLoading, setContextLoading] = useState(false);
+    const [contextSnippets, setContextSnippets] = useState<string[]>([]);
+
+    // Fetch context on node selection
+    useEffect(() => {
+        if (selectedNode && selectedNode.type === "concept") {
+            setContextLoading(true);
+            const conceptId = selectedNode.label || selectedNode.id;
+            graphApi
+                .getConceptContext(conceptId)
+                .then((res) => {
+                    setContextSnippets(res.data.snippets || []);
+                })
+                .catch(() => setContextSnippets([]))
+                .finally(() => setContextLoading(false));
+        } else {
+            setContextSnippets([]);
+        }
+    }, [selectedNode]);
+
     // Search Handler
     useEffect(() => {
         if (searchTerm && fgRef.current) {
@@ -65,8 +87,11 @@ export default function KnowledgeGraphPage() {
         fgRef.current?.zoom(4, 2000);
     };
 
+    const params = useParams();
+    const id = decodeURIComponent(params?.id as string);
+
     const handleApprove = async () => {
-        await submitGraphReview({ query, approved: true });
+        await submitGraphReview({ query: id, approved: true });
     };
 
     return (
@@ -77,6 +102,7 @@ export default function KnowledgeGraphPage() {
                     <div className="relative">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
+                            suppressHydrationWarning
                             placeholder="Search concepts..."
                             className="pl-8 bg-background/80 backdrop-blur"
                             value={searchTerm}
@@ -84,6 +110,11 @@ export default function KnowledgeGraphPage() {
                                 e: React.ChangeEvent<HTMLInputElement>
                             ) => setSearchTerm(e.target.value)}
                         />
+                        {searchTerm && !selectedNode && (
+                            <div className="absolute right-3 top-2.5 text-xs text-red-500 font-medium">
+                                No match
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -146,10 +177,12 @@ export default function KnowledgeGraphPage() {
                         ctx.fillStyle = color;
                         const bckgDimensions = node.__bckgDimensions;
                         bckgDimensions &&
+                            bckgDimensions &&
                             ctx.fillRect(
                                 node.x - bckgDimensions[0] / 2,
                                 node.y - bckgDimensions[1] / 2,
-                                ...bckgDimensions
+                                bckgDimensions[0],
+                                bckgDimensions[1]
                             );
 
                         // Also paint the node circle for pointer detection
@@ -194,9 +227,25 @@ export default function KnowledgeGraphPage() {
                             </div>
                         </div>
                         <div className="bg-secondary/50 p-3 rounded-lg text-xs text-muted-foreground">
-                            <Info className="h-3 w-3 inline mr-1" />
-                            Auto-generated description based on semantic
-                            analysis of papers attached to this node.
+                            <h4 className="font-semibold mb-2 flex items-center">
+                                <Info className="h-3 w-3 inline mr-1" />
+                                Evidence Context
+                            </h4>
+                            {contextLoading ? (
+                                <div className="text-center py-2">
+                                    Loading context...
+                                </div>
+                            ) : contextSnippets.length > 0 ? (
+                                <ul className="space-y-2 list-disc pl-3">
+                                    {contextSnippets.map((snip, i) => (
+                                        <li key={i} className="leading-snug">
+                                            "{snip.slice(0, 150)}..."
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p>No direct context found in papers.</p>
+                            )}
                         </div>
                     </div>
                 </ScrollArea>

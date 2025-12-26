@@ -13,7 +13,7 @@ export default function ResearchLayout({
     params: Promise<{ id: string }>;
 }) {
     const resolvedParams = use(params);
-    const { syncState, isLoading, currentStep } = useResearchStore();
+    const { syncState, isLoading, currentStep, query } = useResearchStore();
     const queryId = decodeURIComponent(resolvedParams.id);
 
     useEffect(() => {
@@ -34,9 +34,9 @@ export default function ResearchLayout({
                     <div className="flex justify-between items-center pb-6 border-b">
                         <h1
                             className="text-2xl font-bold truncate max-w-xl"
-                            title={queryId}
+                            title={query || queryId}
                         >
-                            {queryId}
+                            {query || queryId}
                         </h1>
                         <div className="flex items-center gap-2">
                             {isLoading && (

@@ -1,4 +1,15 @@
 import axios from "axios";
+import {
+    LoginRequest,
+    LoginResponse,
+    UserResponse,
+    PlanResponse,
+    ReviewPayload,
+    ReviewResponse,
+    GraphReviewPayload,
+    GraphReviewResponse,
+    StatusResponse,
+} from "../types";
 
 // Default to localhost:7000 (User's current port) if not specified
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:7000";
@@ -8,44 +19,137 @@ const api = axios.create({
     timeout: 120000, // 120 seconds for long research tasks
     headers: {
         "Content-Type": "application/json",
-        "X-User-Id": process.env.NEXT_PUBLIC_USER_ID || "demo-user",
     },
+    withCredentials: true, // Send cookies with requests
 });
-import {
-    PlanRequest,
-    PlanResponse,
-    ReviewPayload,
-    ReviewResponse,
-    GraphReviewPayload,
-    GraphReviewResponse,
-    StatusResponse,
-} from "../types";
+
+// Refresh Token Logic
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any = null) => {
+    failedQueue.forEach((prom) => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve();
+        }
+    });
+
+    failedQueue = [];
+};
+
+api.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        const originalRequest = error.config;
+
+        // @ts-ignore
+        if (
+            error.response?.status === 401 &&
+            !originalRequest._retry &&
+            !originalRequest.skipAuthRefresh
+        ) {
+            if (isRefreshing) {
+                return new Promise(function (resolve, reject) {
+                    failedQueue.push({ resolve, reject });
+                })
+                    .then(() => {
+                        return api(originalRequest);
+                    })
+                    .catch((err) => {
+                        return Promise.reject(err);
+                    });
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
+
+            try {
+                // Attempt to refresh the token using the HttpOnly cookie
+                // Pass custom config to bypass interceptor loop
+                await api.post(
+                    "/auth/refresh",
+                    {},
+                    {
+                        // @ts-ignore - custom config property
+                        skipAuthRefresh: true,
+                    }
+                );
+
+                // If successful, retry the queued requests
+                processQueue(null);
+                isRefreshing = false;
+
+                // Retry the original request
+                return api(originalRequest);
+            } catch (err) {
+                processQueue(err);
+                isRefreshing = false;
+
+                // If refresh fails, we must redirect to login
+                if (typeof window !== "undefined") {
+                    // Avoid infinite loops if already on login
+                    if (!window.location.pathname.startsWith("/login")) {
+                        window.location.href = "/login";
+                    }
+                }
+                return Promise.reject(err);
+            }
+        }
+
+        return Promise.reject(error);
+    }
+);
+
+export const authApi = {
+    login: (email: string) =>
+        api.post("/auth/login", { email }).then((res) => res.data),
+
+    me: () => api.get<UserResponse>("/auth/me").then((res) => res.data),
+
+    logout: () =>
+        api.post("/auth/logout").then(() => {
+            // Determine if we need to do anything client side.
+            // Since we rely on cookies, just ensuring the request sent is enough.
+            if (typeof window !== "undefined") {
+                // Force reload or redirect might be needed by caller,
+                // but for API method just return promise.
+                localStorage.removeItem("vra_auth_token"); // Cleanup legacy if exists
+            }
+        }),
+};
 
 export const plannerApi = {
-    plan: (query: string) =>
+    plan: (query: string): Promise<PlanResponse> =>
         api
             .post<PlanResponse>("/planner/plan", { query })
             .then((res) => res.data),
 
-    status: (query: string) =>
+    status: (query: string): Promise<StatusResponse> =>
         api
             .get<StatusResponse>(`/planner/status/${encodeURIComponent(query)}`)
             .then((res) => res.data),
 
-    review: (payload: ReviewPayload) =>
+    review: (payload: ReviewPayload): Promise<ReviewResponse> =>
         api
             .post<ReviewResponse>("/planner/review", payload)
             .then((res) => res.data),
 
-    reviewGraph: (payload: GraphReviewPayload) =>
+    reviewGraph: (payload: GraphReviewPayload): Promise<GraphReviewResponse> =>
         api
             .post<GraphReviewResponse>("/planner/review-graph", payload)
             .then((res) => res.data),
 
-    continue: (query: string) =>
+    continue: (sessionId: string): Promise<StatusResponse> =>
         api
-            .post<PlanResponse>("/planner/continue", { query })
+            .post<StatusResponse>(
+                `/planner/continue/${encodeURIComponent(sessionId)}`
+            )
             .then((res) => res.data),
+
+    getSessions: (): Promise<any> =>
+        api.get<any>("/planner/sessions").then((res) => res.data),
 };
 
 export const researchApi = {
@@ -69,6 +173,10 @@ export const graphApi = {
         api.get(`/graphs/trends/${encodeURIComponent(query)}`),
     getGaps: async (query: string) =>
         api.get(`/graphs/gaps/${encodeURIComponent(query)}`),
+    getConceptContext: async (concept: string) =>
+        api.get<{ concept: string; snippets: string[] }>(
+            `/graph-viewer/context/${encodeURIComponent(concept)}`
+        ),
 };
 
 export default api;

@@ -7,85 +7,94 @@ logger = logging.getLogger(__name__)
 class PaperSummarizationAgent:
     name = "paper_summarization_agent"
 
-    def run(self, state):
-        logger.info("📄 Summarizing paper content (Reliable Mode)...")
-        papers = state.get("selected_papers", [])
-        summaries = {}
-
-        # Schema Validation Set
+    def _summarize_single_paper(self, paper: dict) -> tuple[str, dict, list]:
+        """
+        Helper to process a single paper. Returns (pid, summary_dict, concepts).
+        """
         REQUIRED_KEYS = {
             "problem", "method", "results", 
             "limitations", "future_work", "concepts"
         }
+        
+        pid = paper.get("canonical_id")
+        if not pid:
+            return None, None, None
 
-        for paper in papers:
-            pid = paper.get("canonical_id")
-            if not pid:
-                continue
+        title = paper.get("title", "Unknown Title")
+        abstract = paper.get("abstract", "No abstract available.")
+        
+        prompt = f"""
+        Analyze the following research paper based on its title and abstract.
+        
+        Paper Title: {title}
+        Abstract: {abstract}
 
-            title = paper.get("title", "Unknown Title")
-            abstract = paper.get("abstract", "No abstract available.")
+        Extract and Structure the following information:
+        - **problem**: Problem/Research Question
+        - **method**: Methodology/Approach
+        - **results**: Key Findings
+        - **limitations**: Limitations
+        - **future_work**: Future Directions
+        - **concepts**: List of 5-10 technical keywords (strings)
+
+        Return strictly valid JSON.
+        """
+
+        try:
+            summary_dict = generate_structured_json(prompt)
             
-            prompt = f"""
-            Analyze the following research paper based on its title and abstract.
+            # Reliability check & Retry
+            if not REQUIRED_KEYS.issubset(summary_dict.keys()):
+                logger.warning(f"Summary for {pid} partial. Retrying once...")
+                try:
+                    summary_dict = generate_structured_json(prompt)
+                except Exception:
+                    pass 
             
-            Paper Title: {title}
-            Abstract: {abstract}
+            if not REQUIRED_KEYS.issubset(summary_dict.keys()):
+                summary_dict["_status"] = "partial_fallback"
+                summary_dict["_error"] = f"Missing keys: {REQUIRED_KEYS - summary_dict.keys()}"
+                for k in REQUIRED_KEYS:
+                    if k not in summary_dict:
+                        summary_dict[k] = "Not found (Extraction Failed)"
+            else:
+                summary_dict["_status"] = "success"
 
-            Extract and Structure the following information:
-            - **problem**: Problem/Research Question
-            - **method**: Methodology/Approach
-            - **results**: Key Findings
-            - **limitations**: Limitations
-            - **future_work**: Future Directions
-            - **concepts**: List of 5-10 technical keywords (strings)
+            # Concepts
+            concepts = []
+            if "concepts" in summary_dict and isinstance(summary_dict["concepts"], list):
+                concepts = [c.strip().lower() for c in summary_dict["concepts"] if isinstance(c, str)]
 
-            Return strictly valid JSON.
-            """
+            return pid, summary_dict, concepts
 
-            try:
-                # Use harded structured service
-                summary_dict = generate_structured_json(prompt)
-                
-                # Reliability check & Retry
-                if not REQUIRED_KEYS.issubset(summary_dict.keys()):
-                    logger.warning(f"Summary for {pid} partial. Retrying once...")
-                    try:
-                        summary_dict = generate_structured_json(prompt)
-                    except Exception:
-                        pass # Keep original result if retry fails or ensure fallback below
-                
-                # Check again
-                if not REQUIRED_KEYS.issubset(summary_dict.keys()):
-                    summary_dict["_status"] = "partial_fallback"
-                    summary_dict["_error"] = f"Missing keys: {REQUIRED_KEYS - summary_dict.keys()}"
-                    # fill missing
-                    for k in REQUIRED_KEYS:
-                        if k not in summary_dict:
-                            summary_dict[k] = "Not found (Extraction Failed)"
-                else:
-                    summary_dict["_status"] = "success"
+        except Exception as e:
+            logger.warning(f"Failed summarizing {pid}: {e}")
+            fallback = {key: "Generation Failed" for key in REQUIRED_KEYS}
+            fallback["_status"] = "error"
+            fallback["_error"] = str(e)
+            return pid, fallback, []
 
-                summaries[pid] = summary_dict
-                
-                # Update paper_concepts in state
-                if "concepts" in summary_dict and isinstance(summary_dict["concepts"], list):
-                    if "paper_concepts" not in state:
-                        state["paper_concepts"] = {}
-                    # Normalize concepts here too to match Graph Service
-                    norm_concepts = [c.strip().lower() for c in summary_dict["concepts"] if isinstance(c, str)]
-                    state["paper_concepts"][pid] = norm_concepts
+    def run(self, state):
+        import concurrent.futures
+        
+        logger.info("📄 Summarizing paper content (Reliable Mode - Parallel)...")
+        papers = state.get("selected_papers", [])
+        summaries = {}
+        
+        if "paper_concepts" not in state:
+            state["paper_concepts"] = {}
 
-                logger.info(f"Summarized {pid} (Status: {summary_dict['_status']})")
-
-            except Exception as e:
-                logger.warning(f"Failed summarizing {pid}: {e}")
-                # Add reliable fallback
-                summaries[pid] = {
-                    key: "Generation Failed" for key in REQUIRED_KEYS
-                }
-                summaries[pid]["_status"] = "error"
-                summaries[pid]["_error"] = str(e)
+        # Parallel Execution
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_paper = {executor.submit(self._summarize_single_paper, paper): paper for paper in papers}
+            
+            for future in concurrent.futures.as_completed(future_to_paper):
+                pid, summary_dict, concepts = future.result()
+                if pid:
+                    summaries[pid] = summary_dict
+                    if concepts:
+                        state["paper_concepts"][pid] = concepts
+                    logger.info(f"Summarized {pid} (Status: {summary_dict.get('_status')})")
 
         state["paper_structured_summaries"] = summaries
         return state

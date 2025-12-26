@@ -20,7 +20,13 @@ class GraphBuilderAgent:
             state["error"] = "Missing query for graph building"
             return state
 
-        user_id = state.get("user_id", "demo-user")
+        user_id = state.get("user_id")
+        if not user_id:
+             logger.warning("Missing user_id in state for graph building")
+             # Should we fail? For now, let's allow it but log heavily or maybe raise?
+             # Given strict auth plan, we should probably fail or assume it was set by planner.
+             state["error"] = "Missing user_id for graph building"
+             return state
 
         selected_papers = state.get("selected_papers", [])
         global_analysis = state.get("global_analysis", {})

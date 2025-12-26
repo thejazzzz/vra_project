@@ -6,6 +6,7 @@ from typing import List, Dict
 from clients.arxiv_client import search_arxiv
 from utils.sanitization import clean_text, is_nonempty_text
 from utils.id_normalization import normalize_arxiv_id, to_canonical_id
+from services.data_normalization_service import normalize_date, normalize_authors
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,10 @@ class ArxivAgent:
 
             canonical_id = to_canonical_id("arxiv", arxiv_id)
 
+            # Normalization
+            year = normalize_date(p.get("published"))
+            clean_authors = normalize_authors(p.get("authors", []))
+
             normalized.append({
                 "canonical_id": canonical_id,
                 "paper_id": arxiv_id,
@@ -48,9 +53,11 @@ class ArxivAgent:
                 "summary": abstract,
                 "pdf_url": p.get("pdf_url"),
 
-                "authors": p.get("authors", []),
+                "authors": clean_authors,
+                "year": year,
+                "publication_year": year,
                 "published": p.get("published"),
-                "metadata": p,
+                "metadata": {**p, "references": []}, # Explicitly empty references for Arxiv
             })
 
         logger.info(f"📚 arXiv Agent returned {len(normalized)} papers")

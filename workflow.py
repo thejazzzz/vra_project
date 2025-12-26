@@ -4,10 +4,15 @@ import asyncio
 from state.state_schema import VRAState
 from agents.graph_builder_agent import graph_builder_agent
 from agents.paper_summarization_agent import paper_summarization_agent
+# from services.data_normalization_service import normalize_paper_metadata (Will implement next)
 from agents.gap_analysis_agent import gap_analysis_agent
 from agents.reporting_agent import reporting_agent
+from agents.hypothesis_generation_agent import hypothesis_generation_agent
+from agents.reviewer_agent import reviewer_agent
 from services.analysis_service import run_analysis_task
 from services.trend_analysis_service import detect_concept_trends
+from database.models.workflow_state_model import WorkflowState
+from database.db import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +26,12 @@ async def run_step(state: VRAState) -> VRAState:
         # Phase 3.1 Safety: Transition Validation
         # ----------------------------------------------------
         ALLOWED_STEPS = {
-            "initial", "awaiting_research_review", "awaiting_analysis",
+            "awaiting_research_review", "awaiting_analysis",
             "awaiting_paper_summaries", "awaiting_graphs", "awaiting_graph_review",
-            "awaiting_gap_analysis", "awaiting_report", "awaiting_final_review",
+            "awaiting_gap_analysis", "awaiting_hypothesis", "reviewing_hypotheses",
+            "awaiting_report", "awaiting_final_review",
             "completed", "failed", "error"
         }
-        
         if current not in ALLOWED_STEPS:
              logger.error(f"Illegal workflow state: {current}")
              state["error"] = f"Illegal workflow state: {current}"
@@ -92,10 +97,25 @@ async def run_step(state: VRAState) -> VRAState:
         # ---------------------------------------------------------
         # STEP 4.5 — GAP ANALYSIS (New Level 4)
         # ---------------------------------------------------------
-        # We run this automatically after graph review, or as part of reporting
         if current == "awaiting_gap_analysis":
              # Run gap analysis
             state = await asyncio.to_thread(gap_analysis_agent.run, state)
+            state["current_step"] = "awaiting_hypothesis"
+            return state
+
+        # ---------------------------------------------------------
+        # STEP 4.6 — HYPOTHESIS GENERATION (Phase 4)
+        # ---------------------------------------------------------
+        if current == "awaiting_hypothesis":
+            state = await asyncio.to_thread(hypothesis_generation_agent.run, state)
+            state["current_step"] = "reviewing_hypotheses"
+            return state
+
+        # ---------------------------------------------------------
+        # STEP 4.7 — REVIEWER (Phase 4.1)
+        # ---------------------------------------------------------
+        if current == "reviewing_hypotheses":
+            state = await asyncio.to_thread(reviewer_agent.run, state)
             state["current_step"] = "awaiting_report"
             return state
 

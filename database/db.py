@@ -43,5 +43,6 @@ def init_db():
     from database.models.paper_model import Paper
     from database.models.workflow_state_model import WorkflowState
     from database.models.graph_model import Graph  # <-- REQUIRED
+    from database.models.auth_models import User, ResearchSession, AuditLog
 
     Base.metadata.create_all(bind=engine)

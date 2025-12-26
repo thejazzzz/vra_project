@@ -2,6 +2,8 @@
 from fastapi import APIRouter, HTTPException, Depends, Header
 from services.graph_persistence_service import load_graphs
 from typing import Optional
+from api.dependencies.auth import get_current_user
+from database.models.auth_models import User
 
 
 import logging
@@ -10,15 +12,16 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def get_user_id(x_user_id: Optional[str] = Header(None)):
-    return x_user_id or "demo-user"
+
 
 
 @router.get("/graphs/{query}")
-def get_graphs(query: str, user_id: str = Depends(get_user_id)):
+def get_graphs(query: str, current_user: User = Depends(get_current_user)):
 
     if not query or not query.strip():
         raise HTTPException(status_code=400, detail="Invalid query")
+    
+    user_id = current_user.id
 
     try:
         graphs = load_graphs(query, user_id)

@@ -55,12 +55,12 @@ def _normalize_paper(p: Union[Paper, dict]) -> Dict[str, str]:
     else:
         pid = p.id
         title = p.title
-        summary = p.summary
+        summary = getattr(p, "summary", "") or getattr(p, "abstract", "")
 
     return {
         "id": clean_text(pid),
         "title": clean_text(title),
-        "summary": clean_text(summary),
+        "summary": clean_text(summary or p.get("abstract", "") if isinstance(p, dict) else summary),
     }
 
 

@@ -11,6 +11,7 @@ import {
     TrendingUp,
     AlertTriangle,
     FileText,
+    Lightbulb,
 } from "lucide-react";
 import { useResearchStore } from "@/lib/store";
 
@@ -33,6 +34,7 @@ export function Sidebar({ params }: SidebarProps) {
         { name: "Author Network", href: `${baseUrl}/authors`, icon: Users },
         { name: "Trends", href: `${baseUrl}/trends`, icon: TrendingUp },
         { name: "Research Gaps", href: `${baseUrl}/gaps`, icon: AlertTriangle },
+        { name: "Hypotheses", href: `${baseUrl}/hypotheses`, icon: Lightbulb },
         { name: "Report", href: `${baseUrl}/report`, icon: FileText },
     ];
 
@@ -41,7 +43,9 @@ export function Sidebar({ params }: SidebarProps) {
             <div className="space-y-4 py-4">
                 <div className="px-4 py-2">
                     <h2 className="mb-2 px-2 text-lg font-semibold tracking-tight text-primary">
-                        VRA Dashboard
+                        <Link href="/dashboard" className="hover:underline">
+                            VRA Dashboard
+                        </Link>
                     </h2>
                     <p
                         className="px-2 text-xs text-muted-foreground truncate"

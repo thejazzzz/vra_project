@@ -100,10 +100,28 @@ export default function ResearchGapsPage() {
                                     Evidence
                                 </h4>
                                 <p className="text-sm text-muted-foreground leading-relaxed italic border-l-2 pl-3">
-                                    "
-                                    {gap.evidence ||
-                                        "Derived from graph structural holes."}
-                                    "
+                                    " "
+                                    {typeof gap.evidence === "object" &&
+                                    gap.evidence !== null &&
+                                    !Array.isArray(gap.evidence)
+                                        ? Object.entries(gap.evidence)
+                                              .map(
+                                                  ([k, v]) =>
+                                                      `${k.replace(
+                                                          /_/g,
+                                                          " "
+                                                      )}: ${
+                                                          typeof v === "string"
+                                                              ? v
+                                                              : JSON.stringify(
+                                                                    v
+                                                                )
+                                                      }`
+                                              )
+                                              .join(", ")
+                                        : gap.evidence ||
+                                          "Derived from graph structural holes."}
+                                    " "
                                 </p>
                             </div>
                         </CardContent>
