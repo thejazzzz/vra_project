@@ -17,7 +17,11 @@ import { Label } from "@/components/ui/label";
 import { plannerApi } from "@/lib/api";
 import { Loader2, Plus } from "lucide-react";
 
-export function NewResearchDialog() {
+export function NewResearchDialog({
+    children,
+}: {
+    children?: React.ReactNode;
+}) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [loading, setLoading] = useState(false);
@@ -54,9 +58,11 @@ export function NewResearchDialog() {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button className="gap-2">
-                    <Plus className="h-4 w-4" /> New Research
-                </Button>
+                {children || (
+                    <Button className="gap-2">
+                        <Plus className="h-4 w-4" /> New Research
+                    </Button>
+                )}
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <form onSubmit={handleStart}>

@@ -6,7 +6,10 @@ export function middleware(request: NextRequest) {
 
     // Public paths that don't require authentication
     if (
+        path === "/" ||
         path === "/login" ||
+        path === "/terms" ||
+        path === "/privacy" ||
         path.startsWith("/_next") ||
         path === "/favicon.ico" ||
         path.startsWith("/api/") // If we decide to proxy, or if these are Next.js API routes (unlikely for now)

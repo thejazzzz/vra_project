@@ -63,9 +63,11 @@ export default function DashboardPage() {
                     <p className="text-sm text-muted-foreground mt-2">
                         Start your first research query to see it here.
                     </p>
-                    <Link href="/" className="mt-4 inline-block">
-                        <Button variant="outline">Start Research</Button>
-                    </Link>
+                    <NewResearchDialog>
+                        <Button variant="outline" className="mt-4">
+                            Start Research
+                        </Button>
+                    </NewResearchDialog>
                 </div>
             ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
