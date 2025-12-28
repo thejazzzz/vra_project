@@ -205,6 +205,17 @@ async def _handle_analysis_step(state: VRAState) -> VRAState:
     try:
         analysis = await run_analysis_task(query, papers, audience=audience)
         state["global_analysis"] = analysis
+        
+        # FIX 2: KG Consistency
+        # Update selected_papers to the RE-RANKED subset used for analysis
+        if "used_papers" in analysis:
+            used = analysis["used_papers"]
+            if used and isinstance(used, list):
+                logger.info(f"KG Consistency: Updating selected_papers with {len(used)} re-ranked items.")
+                state["selected_papers"] = used
+            else:
+                logger.debug("KG Consistency: used_papers empty or invalid. Keeping original selection.")
+             
         state["current_step"] = "awaiting_paper_summaries"
     except Exception as e:
         logger.error(f"Analysis step failed: {e}", exc_info=True)

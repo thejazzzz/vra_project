@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import threading
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Tuple
 
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 
@@ -98,12 +98,13 @@ def _normalize_relation(r: dict) -> Optional[Dict[str, str]]:
 # ============================================================
 
 from services.research_service import get_relevant_context
+from clients.chroma_client import get_client
 
 async def _build_context(
     query: str,
     papers: Optional[List[Union[Paper, dict]]],
     audience: str = "general",
-) -> str:
+) -> Tuple[str, List[Dict]]:
     q = clean_text(query)
 
     audience_instructions = {
@@ -133,11 +134,66 @@ async def _build_context(
     
     # Analyze provided papers
     items: List[Dict[str, str]] = []
+    
+    # FIX 2: Re-rank papers by vector relevance (Top 5)
+    selected_papers_subset = []
+    final_selection = []
     if papers:
-        for p in papers[:5]:
-            norm = _normalize_paper(p)
+        # 1. Normalize all inputs first to handle mixed types (Paper objects vs dicts)
+        # Store as (normalized_dict, original_obj) tuples
+        pool = []
+        for p in papers:
+            n = _normalize_paper(p)
+            pool.append((n, p))
+            
+        # 2. Get Vector Rankings
+        client = get_client()
+        ranked_indices = []
+        
+        try:
+             # Fast metadata-only search to get IDs
+             # We use the query to find which of our pool papers are most relevant
+             # Note: This assumes papers are already embedded. 
+             # Since research_service embeds them BEFORE analysis, this holds.
+             results = await asyncio.to_thread(client.search, q, n_results=len(pool)*2)
+             
+             # Extract IDs and map back to pool
+             ranked_ids = []
+             for res in results:
+                 mid = res.get("metadata", {}).get("canonical_id")
+                 if mid: 
+                     ranked_ids.append(mid)
+             
+             # Simple O(N^2) sort or map check - N is small (20)
+             # We want to pick items from 'pool' that appear in 'ranked_ids' first
+             pool_map = {n["id"]: (n, p) for n, p in pool}
+             
+             # Selection Set 1: Ranked matches
+             for rid in ranked_ids:
+                 if rid in pool_map:
+                     if pool_map[rid] not in selected_papers_subset:
+                         selected_papers_subset.append(pool_map[rid])
+                         
+        except Exception as e:
+            logger.warning(f"Analysis re-ranking failed: {e}. Falling back to default order.")
+            
+        # 3. Fallback: Fill remaining slots with original order
+        for item in pool:
+            if len(selected_papers_subset) >= 5:
+                break
+            if item not in selected_papers_subset:
+                selected_papers_subset.append(item)
+                
+        # 4. Final Slice
+        final_selection = selected_papers_subset[:5]
+        
+        # 5. Build Text Items
+        for norm, original in final_selection:
             if is_nonempty_text(norm["title"]) or is_nonempty_text(norm["summary"]):
                 items.append(norm)
+
+    # Return input papers corresponding to the selection (for state update)
+    used_papers_objs = [orig for _, orig in final_selection]
 
     # Retrieval Expansion (if papers are scarce)
     retrieved_context = ""
@@ -155,7 +211,7 @@ async def _build_context(
             retrieved_context = ""
 
     if not items and not retrieved_context:
-        return f"{prefix}No usable paper metadata or retrieved context.\nQuery: {q}"
+        return f"{prefix}No usable paper metadata or retrieved context.\nQuery: {q}", []
 
     lines = [f"{prefix}User query: {q}", "", "Relevant papers:"]
 
@@ -172,7 +228,7 @@ async def _build_context(
     if retrieved_context:
         lines.append(f"\n[Additional Context from Knowledge Base]:\n{retrieved_context}")
 
-    return "\n".join(lines)
+    return "\n".join(lines), used_papers_objs
 
 # ============================================================
 #  Fallback
@@ -246,7 +302,7 @@ async def run_analysis_task(
     audience: str = "general",
 ) -> Dict:
 
-    prompt = await _build_context(query, papers, audience)
+    prompt, used_papers = await _build_context(query, papers, audience)
     result = await asyncio.to_thread(_call_openai_for_analysis, prompt)
 
     return {
@@ -261,6 +317,7 @@ async def run_analysis_task(
             for r in result.get("relations", [])
             if (norm := _normalize_relation(r)) is not None
         ],
+        "used_papers": used_papers
     }
 
 

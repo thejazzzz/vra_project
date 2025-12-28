@@ -74,7 +74,7 @@ async def process_research_task(query: str) -> Dict:
         # --------------------------------------------
         # 1. Fetch merged papers
         # --------------------------------------------
-        papers = await data_acquisition_agent.run(query, limit=5)
+        papers = await data_acquisition_agent.run(query, limit=20)
 
         if not papers:
             return {
