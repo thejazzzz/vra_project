@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, AlertCircle, Lightbulb } from "lucide-react";
+import { PaperLink } from "@/components/ui/paper-link";
+import { extractPaperIds } from "@/lib/provenance-utils";
 
 export default function HypothesesPage() {
     const { hypotheses, reviews } = useResearchStore();
@@ -87,13 +89,9 @@ export default function HypothesesPage() {
                                     {(() => {
                                         const text =
                                             hyp.supporting_evidence || "";
-                                        // Simple arXiv ID regex
-                                        const paperIdRegex =
-                                            /\b\d{4}\.\d{4,5}\b/g;
-                                        const matches =
-                                            text.match(paperIdRegex);
+                                        const ids = extractPaperIds(text);
 
-                                        if (!matches) {
+                                        if (ids.length === 0) {
                                             return (
                                                 <>
                                                     {text}
@@ -105,26 +103,37 @@ export default function HypothesesPage() {
                                             );
                                         }
 
-                                        // Linkify detected IDs
-                                        // We split by the regex to preserve surrounding text
-                                        const parts = text.split(paperIdRegex);
+                                        // Split text by IDs to preserve flow
+                                        const escapedIds = ids.map((id) =>
+                                            id.replace(
+                                                /[.*+?^${}()|[\]\\]/g,
+                                                "\\$&"
+                                            )
+                                        );
+                                        const splitRegex = new RegExp(
+                                            `(${escapedIds.join("|")})`,
+                                            "g"
+                                        );
+                                        const parts = text.split(splitRegex);
+
                                         return (
                                             <span>
-                                                {parts.map((part, i) => (
-                                                    <span key={i}>
-                                                        {part}
-                                                        {matches[i] && (
-                                                            <a
-                                                                href={`https://arxiv.org/abs/${matches[i]}`}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="text-primary hover:underline font-mono"
-                                                            >
-                                                                {matches[i]}
-                                                            </a>
-                                                        )}
-                                                    </span>
-                                                ))}
+                                                {parts.map((part, i) => {
+                                                    if (ids.includes(part)) {
+                                                        return (
+                                                            <PaperLink
+                                                                key={i}
+                                                                paperId={part}
+                                                                variant="inline"
+                                                            />
+                                                        );
+                                                    }
+                                                    return (
+                                                        <span key={i}>
+                                                            {part}
+                                                        </span>
+                                                    );
+                                                })}
                                             </span>
                                         );
                                     })()}

@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Info, X, Check } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { PaperLink } from "@/components/ui/paper-link";
 
 // Dynamic import for Force Graph (Client Side Only)
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
@@ -48,7 +49,7 @@ export default function KnowledgeGraphPage() {
 
     const [contextLoading, setContextLoading] = useState(false);
     const [contextSnippets, setContextSnippets] = useState<
-        Array<{ document: string; metadata: { canonical_id: string } }>
+        Array<{ document: string; metadata?: { canonical_id?: string } }>
     >([]);
 
     // Fetch context on node selection
@@ -218,7 +219,7 @@ export default function KnowledgeGraphPage() {
 
             {/* Side Panel */}
             <Card
-                className={`w-80 flex flex-col transition-all duration-300 ${
+                className={`w-80 h-full flex flex-col transition-all duration-300 ${
                     selectedNode ? "translate-x-0" : "translate-x-full hidden"
                 }`}
             >
@@ -254,52 +255,59 @@ export default function KnowledgeGraphPage() {
                                 <Info className="h-3 w-3 inline mr-1" />
                                 Evidence Context
                             </h4>
-                            {contextLoading ? (
-                                <div className="text-center py-2">
-                                    Loading context...
-                                </div>
-                            ) : contextSnippets.length > 0 ? (
-                                <ul className="space-y-3">
-                                    {contextSnippets.map((snip, i) => (
-                                        <li
-                                            key={i}
-                                            className="leading-snug bg-background/50 p-2 rounded border border-border/50"
-                                        >
-                                            <p className="italic mb-1">
-                                                "{snip.document.slice(0, 150)}
-                                                ..."
-                                            </p>
-                                            {/* PROVENANCE FIX: Attribute Source */}
-                                            {snip.metadata?.canonical_id ? (
-                                                <a
-                                                    href={`https://arxiv.org/abs/${snip.metadata.canonical_id}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex items-center justify-end gap-1 text-[10px] text-primary hover:underline font-mono"
-                                                >
-                                                    —{" "}
-                                                    {snip.metadata.canonical_id}
-                                                </a>
-                                            ) : (
-                                                <span className="flex justify-end text-[10px] text-muted-foreground">
-                                                    — System Context
-                                                </span>
-                                            )}
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p>No direct context found in papers.</p>
-                            )}
+                            <div className="max-h-60 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/40">
+                                {contextLoading ? (
+                                    <div className="text-center py-2">
+                                        Loading context...
+                                    </div>
+                                ) : contextSnippets.length > 0 ? (
+                                    <ul className="space-y-3">
+                                        {contextSnippets.map((snip, i) => (
+                                            <li
+                                                key={i}
+                                                className="leading-snug bg-background/50 p-2 rounded border border-border/50"
+                                            >
+                                                <p className="italic mb-1">
+                                                    "
+                                                    {snip.document.slice(
+                                                        0,
+                                                        150
+                                                    )}
+                                                    ..."
+                                                </p>
+                                                {/* PROVENANCE FIX: Attribute Source */}
+                                                {snip.metadata?.canonical_id ? (
+                                                    <div className="flex justify-end mt-1">
+                                                        <PaperLink
+                                                            paperId={
+                                                                snip.metadata
+                                                                    .canonical_id
+                                                            }
+                                                            variant="inline"
+                                                            className="text-[10px]"
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <span className="flex justify-end text-[10px] text-muted-foreground mt-1">
+                                                        — System Context
+                                                    </span>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p>No direct context found in papers.</p>
+                                )}
 
-                            {/* FALSE AUTHORITY BADGE */}
-                            <div className="mt-4 pt-3 border-t border-border/50">
-                                <div className="text-[10px] text-muted-foreground flex gap-2 items-start bg-yellow-500/10 p-2 rounded">
-                                    <Info className="h-3 w-3 shrink-0 translate-y-0.5 text-yellow-500" />
-                                    <span>
-                                        Context snippets represent retrieved
-                                        evidence, not system facts.
-                                    </span>
+                                {/* FALSE AUTHORITY BADGE */}
+                                <div className="mt-4 pt-3 border-t border-border/50">
+                                    <div className="text-[10px] text-muted-foreground flex gap-2 items-start bg-yellow-500/10 p-2 rounded">
+                                        <Info className="h-3 w-3 shrink-0 translate-y-0.5 text-yellow-500" />
+                                        <span>
+                                            Context snippets represent retrieved
+                                            evidence, not system facts.
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -14,10 +14,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ThumbsUp, ThumbsDown, Check, ArrowRight } from "lucide-react";
-
-// Helper to detect if a string is a Paper ID (simple heuristic)
-const isPaperId = (str: string) =>
-    /^\d{4}\.\d{4,5}$/.test(str) || /^10\./.test(str);
+import { PaperLink } from "@/components/ui/paper-link";
+import { isPaperId, extractPaperIds } from "@/lib/provenance-utils";
 
 export default function ResearchGapsPage() {
     const { gaps } = useResearchStore();
@@ -33,15 +31,10 @@ export default function ResearchGapsPage() {
                             className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono"
                         >
                             {isPaperId(String(v)) ? (
-                                <a
-                                    href={`https://arxiv.org/abs/${v}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="hover:underline text-primary flex items-center gap-1"
-                                >
-                                    {String(v)}
-                                    <ArrowRight className="h-2 w-2 -rotate-45" />
-                                </a>
+                                <PaperLink
+                                    paperId={String(v)}
+                                    variant="inline"
+                                />
                             ) : (
                                 String(v)
                             )}
@@ -52,15 +45,11 @@ export default function ResearchGapsPage() {
         }
         if (isPaperId(String(value))) {
             return (
-                <a
-                    href={`https://arxiv.org/abs/${value}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline font-mono inline-flex items-center gap-1"
-                >
-                    {String(value)}
-                    <ArrowRight className="h-3 w-3 -rotate-45" />
-                </a>
+                <PaperLink
+                    paperId={String(value)}
+                    variant="inline"
+                    className="text-sm"
+                />
             );
         }
         return <span className="text-foreground">{String(value)}</span>;
@@ -190,32 +179,19 @@ export default function ResearchGapsPage() {
                                 size="sm"
                                 className="text-muted-foreground hover:text-primary transition-colors"
                                 onClick={() => {
-                                    // EXTRACT IDS for "View Related Papers" Action
-                                    const ids: string[] = [];
-                                    const extractIds = (obj: any) => {
-                                        if (
-                                            typeof obj === "string" &&
-                                            isPaperId(obj)
-                                        )
-                                            ids.push(obj);
-                                        else if (Array.isArray(obj))
-                                            obj.forEach(extractIds);
-                                        else if (
-                                            typeof obj === "object" &&
-                                            obj !== null
-                                        )
-                                            Object.values(obj).forEach(
-                                                extractIds
-                                            );
-                                    };
-                                    extractIds(gap.evidence);
+                                    // EXTRACT IDS using centralized utils
+                                    const ids = extractPaperIds(gap.evidence);
 
-                                    // SATISFY USER REQUEST: Log to console to prove wiring
+                                    // Log to console
                                     console.info("Related papers:", ids);
 
-                                    // Visual feedback
+                                    // Explicit failure-mode / status feedback
                                     alert(
-                                        `Filtering papers related to: ${gap.gap_id}\n\nMatched ${ids.length} papers directly linked in evidence.\n(See console for exact IDs)`
+                                        `Preview related evidence (filtering not yet applied)\n\nFound ${
+                                            ids.length
+                                        } papers linked in evidence:\n${ids.join(
+                                            ", "
+                                        )}`
                                     );
                                 }}
                             >

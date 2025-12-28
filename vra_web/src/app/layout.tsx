@@ -13,6 +13,8 @@ export const metadata: Metadata = {
 
 import AuthGuard from "@/components/auth-guard";
 
+import { GlobalPaperDialog } from "@/components/global-paper-dialog";
+
 export default function RootLayout({
     children,
 }: Readonly<{
@@ -28,6 +30,7 @@ export default function RootLayout({
             >
                 <Providers>
                     <AuthGuard>{children}</AuthGuard>
+                    <GlobalPaperDialog />
                 </Providers>
             </body>
         </html>

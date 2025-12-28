@@ -36,6 +36,7 @@ import {
     AlertTriangle,
 } from "lucide-react";
 import { TrendMetrics } from "@/types";
+import { PaperLink } from "@/components/ui/paper-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -252,13 +253,9 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                             <XAxis
                                 dataKey="year"
                                 fontSize={10}
-                                stroke="hsl(var(--muted-foreground))"
+                                stroke="#94a3b8"
                             />
-                            <YAxis
-                                fontSize={10}
-                                stroke="hsl(var(--muted-foreground))"
-                                width={30}
-                            />
+                            <YAxis fontSize={10} stroke="#94a3b8" width={30} />
                             <Tooltip
                                 content={({ active, payload, label }) => {
                                     if (active && payload && payload.length) {
@@ -318,11 +315,7 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                             />
                             <Bar
                                 dataKey="value"
-                                fill={
-                                    isValid
-                                        ? "hsl(var(--primary))"
-                                        : "hsl(var(--muted-foreground))"
-                                }
+                                fill={isValid ? "#3b82f6" : "#64748b"}
                                 radius={[4, 4, 0, 0]}
                                 barSize={20}
                             />
@@ -387,19 +380,11 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                         <div className="mt-2 text-xs space-y-1 max-h-40 overflow-y-auto pl-1 pr-1 border-t pt-2 scrollbar-thin scrollbar-thumb-muted-foreground/20">
                             {paperIds.length > 0 ? (
                                 paperIds.map((pid) => (
-                                    <a
+                                    <PaperLink
                                         key={pid}
-                                        href={`https://arxiv.org/abs/${pid}`} // PROVENANCE FIX: Direct Link
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-2 p-1 hover:bg-muted/50 rounded group/link transition-colors"
-                                    >
-                                        <FileText className="h-3 w-3 text-muted-foreground group-hover/link:text-primary" />
-                                        <span className="truncate flex-1 font-mono text-[10px] text-muted-foreground group-hover/link:text-primary group-hover/link:underline">
-                                            {pid}
-                                        </span>
-                                        <ArrowUpRight className="h-3 w-3 opacity-0 group-hover/link:opacity-100" />
-                                    </a>
+                                        paperId={pid}
+                                        variant="list-item"
+                                    />
                                 ))
                             ) : (
                                 <span className="text-muted-foreground italic">
