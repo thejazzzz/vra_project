@@ -88,10 +88,30 @@ export default function KnowledgeGraphPage() {
     };
 
     const params = useParams();
-    const id = decodeURIComponent(params?.id as string);
+    const id = useMemo(() => {
+        const rawId = params?.id;
+        if (!rawId || typeof rawId !== 'string') {
+            return '';
+        }
+        try {
+            return decodeURIComponent(rawId);
+        } catch (error) {
+            console.error('Failed to decode URL parameter:', error);
+            return rawId; // Fallback to raw value
+        }
+    }, [params?.id]);
 
     const handleApprove = async () => {
+        if (!id) {
+            console.error('Cannot approve: missing research ID');
+            return;
+        }
+        try {
         await submitGraphReview({ query: id, approved: true });
+        } catch (error) {
+            console.error('Failed to submit graph review:', error);
+            // Consider adding user-facing error notification here
+        }
     };
 
     return (

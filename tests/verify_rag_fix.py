@@ -25,10 +25,10 @@ sys.modules["database.db"].SessionLocal = MagicMock()
 from services.research_service import get_relevant_context
 from clients.chroma_client import _ChromaClient
 
-class TestRetrievalActiveRAG(unittest.TestCase):
+class TestRetrievalActiveRAG(unittest.IsolatedAsyncioTestCase):
     
     @patch('services.research_service.get_client')
-    def test_get_relevant_context(self, mock_get_client):
+    async def test_get_relevant_context(self, mock_get_client):
         logger.info("TEST: Verifying get_relevant_context logic...")
         
         # Mock Chroma Client
@@ -60,7 +60,7 @@ class TestRetrievalActiveRAG(unittest.TestCase):
         mock_client_instance.search.return_value = mock_results
         
         # Execute
-        context = get_relevant_context("test query", limit=5)
+        context = await get_relevant_context("test query", limit=5)
         
         # Assertions
         logger.info(f"Context Returned:\n{context}")
@@ -77,7 +77,7 @@ class TestRetrievalActiveRAG(unittest.TestCase):
         logger.info("✅ get_relevant_context passed.")
 
     @patch('services.research_service.get_client')
-    def test_fallback_logic(self, mock_get_client):
+    async def test_fallback_logic(self, mock_get_client):
         logger.info("TEST: Verifying Fallback Logic...")
         
         mock_client_instance = MagicMock()
@@ -91,7 +91,7 @@ class TestRetrievalActiveRAG(unittest.TestCase):
         ]
         
         long_query = "this is a very long specific query that fails"
-        context = get_relevant_context(long_query)
+        context = await get_relevant_context(long_query)
         
         self.assertIn("Fallback doc", context)
         logger.info("✅ Fallback logic passed.")

@@ -40,13 +40,26 @@ def reset_database():
         return
 
     try:
+        from sqlalchemy import inspect
+        
+        inspector = inspect(engine)
+        existing_tables = set(inspector.get_table_names())
+        
+        # Verify all requested tables exist
+        missing_tables = [t for t in tables if t not in existing_tables]
+        if missing_tables:
+            print(f"Error: The following tables were not found in the database: {missing_tables}")
+            return
+
         with engine.begin() as connection:
-            # Disable constraints temporarily if needed, but CASCADE should handle it for TRUNCATE
-            # Standard PostgreSQL TRUNCATE with CASCADE
-            table_list = ", ".join(tables)
-            print(f"Truncating tables: {table_list}...")
+            # Quote identifiers for safety
+            preparer = engine.dialect.identifier_preparer
+            quoted_tables = [preparer.quote(t) for t in tables]
+            table_list_str = ", ".join(quoted_tables)
             
-            connection.execute(text(f"TRUNCATE TABLE {table_list} RESTART IDENTITY CASCADE;"))
+            print(f"Truncating tables: {table_list_str}...")
+            
+            connection.execute(text(f"TRUNCATE TABLE {table_list_str} RESTART IDENTITY CASCADE;"))
             
             print("Successfully reset all tables.")
     except Exception as e:

@@ -53,7 +53,8 @@ class PaperSummarizationAgent:
             
             if not REQUIRED_KEYS.issubset(summary_dict.keys()):
                 summary_dict["_status"] = "partial_fallback"
-                summary_dict["_error"] = f"Missing keys: {REQUIRED_KEYS - summary_dict.keys()}"
+                missing = list(REQUIRED_KEYS - summary_dict.keys())
+                summary_dict["_error"] = f"Missing keys: {missing}"
                 for k in REQUIRED_KEYS:
                     if k not in summary_dict:
                         summary_dict[k] = "Not found (Extraction Failed)"

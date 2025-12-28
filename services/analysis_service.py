@@ -99,7 +99,7 @@ def _normalize_relation(r: dict) -> Optional[Dict[str, str]]:
 
 from services.research_service import get_relevant_context
 
-def _build_context(
+async def _build_context(
     query: str,
     papers: Optional[List[Union[Paper, dict]]],
     audience: str = "general",
@@ -142,13 +142,17 @@ def _build_context(
     # Retrieval Expansion (if papers are scarce)
     retrieved_context = ""
     if len(items) < 3:
-         logger.info(f"AnalysisService: Input papers scarce ({len(items)}). Triggering expansion.")
-         retrieved_context = get_relevant_context(
-             q, 
-             limit=3, 
-             max_tokens=1500,
-             agent_name="analysis_service_expansion"
-         )
+        logger.info(f"AnalysisService: Input papers scarce ({len(items)}). Triggering expansion.")
+        try:
+            retrieved_context = await get_relevant_context(
+                q, 
+                limit=3, 
+                max_tokens=1500,
+                agent_name="analysis_service_expansion"
+            )
+        except Exception as e:
+            logger.error(f"Analysis retrieval expansion failed: {e}")
+            retrieved_context = ""
 
     if not items and not retrieved_context:
         return f"{prefix}No usable paper metadata or retrieved context.\nQuery: {q}"
@@ -242,7 +246,7 @@ async def run_analysis_task(
     audience: str = "general",
 ) -> Dict:
 
-    prompt = _build_context(query, papers, audience)
+    prompt = await _build_context(query, papers, audience)
     result = await asyncio.to_thread(_call_openai_for_analysis, prompt)
 
     return {

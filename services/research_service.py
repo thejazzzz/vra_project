@@ -338,14 +338,14 @@ async def add_manual_paper(
         db.close()
 
 
-def get_relevant_context(
+async def get_relevant_context(
     query: str, 
     limit: int = 5, 
     max_tokens: int = 3000, 
     agent_name: str = "unknown"
 ) -> str:
     """
-    Retrieves semantically relevant context from Chroma.
+    Retrieves semantically relevant context from Chroma asynchronously.
     Enforces token budgets, deduplication, and provenance.
     """
     if not query:
@@ -354,18 +354,30 @@ def get_relevant_context(
     # 1. Clean & Normalize
     clean_query = clean_text(query).lower()
     
-    # 2. Retrieval
+    # 2. Retrieval with Async Wrapper and Error Handling
     client = get_client()
-    results = client.search(clean_query, n_results=limit)
+    if not client:
+        logger.warning(f"RETRIEVAL: Agent={agent_name} - Client unavailable.")
+        return ""
+
+    try:
+        results = await asyncio.to_thread(client.search, clean_query, n_results=limit)
+    except Exception as e:
+        logger.error(f"RETRIEVAL ERROR: Agent={agent_name} Query='{clean_query[:50]}...' Error={e}", exc_info=True)
+        return ""
     
     # 2b. Fallback Strategy
     if not results and len(clean_query.split()) > 5:
-        logger.info(f"RETRIEVAL_FALLBACK: '{clean_query}' yielded 0. Retrying fallback.")
+        logger.info(f"RETRIEVAL_FALLBACK: '{clean_query[:50]}...' yielded 0. Retrying fallback.")
         fallback_query = " ".join(clean_query.split()[:5])
-        results = client.search(fallback_query, n_results=limit)
+        try:
+             results = await asyncio.to_thread(client.search, fallback_query, n_results=limit)
+        except Exception as e:
+             logger.error(f"RETRIEVAL FALLBACK FAILED: Agent={agent_name} Error={e}")
+             results = []
 
     # 3. Log Retrieval Stats
-    logger.info(f"RETRIEVAL: Agent={agent_name} Query='{clean_query}' k={limit} Found={len(results)}")
+    logger.info(f"RETRIEVAL: Agent={agent_name} Query='{clean_query[:50]}...' k={limit} Found={len(results)}")
 
     # 4. Filter & Format
     seen_ids = set()
@@ -376,7 +388,7 @@ def get_relevant_context(
         # Distance Threshold (approx 1.5 for cosine in Chroma is loose, but safe)
         # FIX 2: Note that hnsw:space=cosine implies distance = 1 - cosine_similarity.
         # Range is [0, 2]. 0 is identical, 1 is orthogonal, 2 is opposite.
-        if res.get("distance", 0) > 1.5:
+        if res.get("distance", float('inf')) > 1.5:
              continue
              
         meta = res.get("metadata", {})

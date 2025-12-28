@@ -3,6 +3,7 @@ import os
 import sys
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
+from urllib.parse import urlparse, urlunparse
 
 # Load env
 load_dotenv(".env.local")
@@ -17,8 +18,17 @@ if not DATABASE_URL:
     db = os.getenv("POSTGRES_DB", "vra_db")
     DATABASE_URL = f"postgresql://{user}:{password}@{server}:{port}/{db}"
 
-print(f"Connecting to: {DATABASE_URL}")
-
+# Create a safe URL for logging (redact password)
+parsed = urlparse(DATABASE_URL)
+safe_url = urlunparse((
+    parsed.scheme,
+    f"{parsed.username}:******@{parsed.hostname}:{parsed.port}" if parsed.username else parsed.netloc,
+    parsed.path,
+    parsed.params,
+    parsed.query,
+    parsed.fragment
+))
+print(f"Connecting to: {safe_url}")
 try:
     engine = create_engine(DATABASE_URL)
 

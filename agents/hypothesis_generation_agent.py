@@ -46,23 +46,51 @@ class HypothesisGenerationAgent:
         else:
              gap_contexts = []
              for g in active_gaps:
-                 concept = g.get('concept')
-                 desc = g.get('description')
+                 concept = g.get('concept', 'Unknown concept')
+                 desc = g.get('description', 'No description available')
+                 
+                 
                  
                  # Targeted Retrieval
+                 import asyncio
+                 import concurrent.futures
+                 
                  retrieval_query = f"{concept} limitations challenges future work"
-                 evidence = get_relevant_context(
-                     retrieval_query, 
-                     limit=3, 
-                     max_tokens=600,
-                     agent_name="hypothesis_agent"
-                 )
+                 try:
+                     evidence = asyncio.run(get_relevant_context(
+                         retrieval_query, 
+                         limit=3, 
+                         max_tokens=600,
+                         agent_name="hypothesis_agent"
+                     ))
+                 except RuntimeError:
+                     # Fallback: Loop likely running. Offload to clean thread to avoid deadlock.
+                     logger.warning("HypothesisAgent: Event loop running. Offloading async retrieval to new thread.")
+                     try:
+                         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                             # Run asyncio.run in a separate thread which has no loop issues
+                             future = executor.submit(
+                                 asyncio.run, 
+                                 get_relevant_context(
+                                     retrieval_query, 
+                                     limit=3, 
+                                     max_tokens=600,
+                                     agent_name="hypothesis_agent"
+                                 )
+                             )
+                             evidence = future.result(timeout=30)
+                     except Exception as e2:
+                         logger.error(f"HypothesisAgent: Threaded fallback failed: {e2}")
+                         evidence = ""
+                 except Exception as e:
+                     logger.error(f"HypothesisAgent: Async retrieval error: {e}")
+                     evidence = ""
                  
                  # FIX 6: Clearly label missing evidence
                  if not evidence:
                      evidence = "No strong supporting literature found."
                  
-                 block = f"- GAP: {desc}\n  EVIDENCE FROM LITERATRE:\n{evidence}"
+                 block = f"- GAP: {desc}\n  EVIDENCE FROM LITERATURE:\n{evidence}"
                  gap_contexts.append(block)
                  
              context_str = "\n".join(gap_contexts)

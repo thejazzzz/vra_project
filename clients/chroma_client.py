@@ -10,7 +10,7 @@ import os
 import logging
 import threading
 import urllib.parse
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 
 try:
     from chromadb import PersistentClient, HttpClient
@@ -31,11 +31,12 @@ class _ChromaClient:
         if server:
             parsed = urllib.parse.urlparse(server)
             host = parsed.hostname
-            port = parsed.port or (80 if parsed.scheme == "http" else 443)
+            scheme = parsed.scheme or "http"  # Default to http if no scheme
+            port = parsed.port or (80 if scheme == "http" else 443)
 
             try:
                 logger.info(f"Connecting to remote Chroma at: {host}:{port}")
-                self._client = HttpClient(host=host, port=port, ssl=(parsed.scheme == "https"))
+                self._client = HttpClient(host=host, port=port, ssl=(scheme == "https"))
             except Exception as e:
                 logger.error(f"Failed HTTP Chroma client: {e}", exc_info=True)
 
@@ -81,7 +82,7 @@ class _ChromaClient:
                 metadatas=[metadata] if metadata else None
             )
 
-    def search(self, query: str, n_results: int = 5) -> list[Dict[str, Any]]:
+    def search(self, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
         try:
             # We request documents, metadatas, and distances
             result = self._collection.query(
@@ -104,8 +105,8 @@ class _ChromaClient:
                 structured_results.append({
                     "id": ids[i],
                     "document": docs[i],
-                    "metadata": metas[i] if metas else {},
-                    "distance": dists[i] if dists else 0.0
+                    "metadata": metas[i] if (metas and i < len(metas) and metas[i] is not None) else {},
+                    "distance": dists[i] if (dists and i < len(dists) and dists[i] is not None) else float('inf')
                 })
             
             # FIX 1: Explicitly SORT by distance (ascending for cosine distance)

@@ -42,13 +42,52 @@ class ReportingAgent:
         
         # RETRIEVAL REPLACEMENT: use semantics instead of dumping state
         retrieval_query = f"{query} overview implications state of the art"
-        papers_context = get_relevant_context(
-            retrieval_query, 
-            limit=7, 
-            max_tokens=2500,
-            agent_name="reporting_agent"
-        )
         
+        import asyncio
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+        
+        try:
+            # Standard entry point for new thread
+            papers_context = asyncio.run(get_relevant_context(
+                retrieval_query, 
+                limit=7, 
+                max_tokens=2500,
+                agent_name="reporting_agent"
+            ))
+        except RuntimeError as e:
+            # Fallback: Handle cases where an event loop might already exist/run
+            logger.warning(f"Asyncio.run failed ({e}), attempting fallback via existing loop.")
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                     fut = asyncio.run_coroutine_threadsafe(get_relevant_context(
+                        retrieval_query, 
+                        limit=7, 
+                        max_tokens=2500,
+                        agent_name="reporting_agent"
+                     ), loop)
+                     
+                     try:
+                         # FIX: Add timeout to prevent hanging indefinitely
+                         papers_context = fut.result(timeout=30)
+                     except FuturesTimeoutError:
+                         logger.error("Async retrieval timed out (30s). Cancelling.")
+                         fut.cancel()
+                         papers_context = ""
+                else:
+                     papers_context = loop.run_until_complete(get_relevant_context(
+                        retrieval_query, 
+                        limit=7, 
+                        max_tokens=2500,
+                        agent_name="reporting_agent"
+                     ))
+            except Exception as e2:
+                 logger.error(f"Async retrieval failed completely: {e2}")
+                 papers_context = ""
+        except Exception as e:
+             logger.error(f"Async retrieval unexpected error: {e}")
+             papers_context = ""
+
         if not papers_context:
             # FIX 5: Neutral fallback message
             papers_context = "No detailed papers retrieved."
