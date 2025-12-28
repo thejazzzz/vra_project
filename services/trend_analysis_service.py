@@ -3,6 +3,9 @@ from collections import defaultdict
 from typing import List, Dict, Any, Optional, Tuple
 import math
 import statistics
+import logging
+
+logger = logging.getLogger(__name__)
 
 def detect_concept_trends(
     papers: List[Dict[str, Any]], 
@@ -19,6 +22,28 @@ def detect_concept_trends(
     3. **Stability**: Detects Volatile vs Stable trends based on variance.
     4. **Relationship Evolution**: Tracks semantic drift via co-occurrence.
     5. **Confidence**: Statistical NCF-based scoring.
+
+    Returns:
+        Dict[str, Any] with keys:
+        - "metadata": Dict containing processing info
+            - "window_used": {"start": int, "end": int}
+        - "trends": Dict[str, Dict] mapping concept_string -> trend_metrics
+            Each trend_metrics dict contains:
+            - "status": str ("Emerging", "Saturated", "Declining", "Stable", "Sporadic", "New")
+            - "scope": str ("Global", "Subfield", "Niche")
+            - "stability": str ("Volatile", "Stable", "Transient", "Unknown")
+            - "semantic_drift": str ("High", "Moderate", "Low", "Unknown")
+            - "is_trend_valid": bool
+            - "growth_rate": float
+            - "trend_confidence": float (0.0 - 1.0)
+            - "total_count": int
+            - "last_active_year": int
+            - "trend_vector": List[Dict] (Yearly breakdown)
+                - "year": int
+                - "count": int
+                - "norm_freq": float
+                - "paper_ids": List[str]
+                - "top_related": List[str]
     """
     
     # Data structures for aggregation
@@ -32,9 +57,32 @@ def detect_concept_trends(
     global_papers_per_year = defaultdict(int)
     total_papers_in_window = 0
     
-    # Parse window
-    start_year = int(window[0]) if window else 0
-    end_year = int(window[1]) if window else 9999
+    # Parse window strict validation
+    start_year = 0
+    end_year = 9999
+    
+    if window:
+        try:
+            # Type and Length check
+            if not isinstance(window, (tuple, list)) or len(window) != 2:
+                raise ValueError(f"Window must be a tuple/list of 2 items, got: {window}")
+            
+            # Conversion check
+            s_val = int(window[0])
+            e_val = int(window[1])
+            
+            # Logic check
+            if s_val > e_val:
+                raise ValueError(f"Start year ({s_val}) cannot be greater than end year ({e_val})")
+            if s_val < 1900 or e_val > 2100: # Reasonable bounds check
+                logger.warning(f"Window years ({s_val}-{e_val}) are outside typical range (1900-2100). Proceeding, but verify input.")
+                
+            start_year = s_val
+            end_year = e_val
+            
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid window parameter: {window}. Error: {e}")
+            raise ValueError(f"Invalid window parameter: {e}") from e
 
     # Pass 1 & 2: Aggregation
     for paper in papers:
@@ -165,7 +213,7 @@ def detect_concept_trends(
                     status = "Emerging"
                 elif growth_rate < -0.3:
                     status = "Declining"
-                elif total_count > 10:
+                elif total_count > 10 and abs(growth_rate) < 0.1:
                     status = "Saturated"
                 else:
                     status = "Stable"
@@ -184,7 +232,7 @@ def detect_concept_trends(
                     stability = "Volatile"
                 else:
                     stability = "Stable"
-            except:
+            except (ValueError, statistics.StatisticsError):
                 stability = "Unknown"
 
         # 4. Confidence Score
@@ -246,4 +294,9 @@ def detect_concept_trends(
             "last_active_year": years[-1]
         }
         
-    return final_trends
+    return {
+        "metadata": {
+            "window_used": {"start": start_year, "end": end_year}
+        },
+        "trends": final_trends
+    }

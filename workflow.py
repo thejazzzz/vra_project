@@ -64,12 +64,13 @@ async def run_step(state: VRAState) -> VRAState:
             # Run Trend Analysis (Phase 3) - Depends on summaries/concepts
             logger.info("📈 Detecting temporal trends...")
             try:
-                trends = detect_concept_trends(
+                trend_result = detect_concept_trends(
                     state.get("selected_papers", []),
                     state.get("paper_concepts", {}),
                     paper_relations=state.get("paper_relations", {})
                 )
-                state["concept_trends"] = trends
+                state["concept_trends"] = trend_result.get("trends", {})
+                logger.info(f"Trend Analysis Metadata: {trend_result.get('metadata')}")
             except Exception as e:
                 logger.warning(f"Trend analysis failed: {e}")
                 state["concept_trends"] = {}
