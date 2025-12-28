@@ -1,34 +1,51 @@
+//vra_web/src/app/research/[id]/trends/page.tsx
 "use client";
 
 import { useResearchStore } from "@/lib/store";
 import { useMemo } from "react";
-import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-    CardDescription,
-} from "@/components/ui/card";
-import { StatusBadge } from "@/components/status-badge";
-import {
-    ResponsiveContainer,
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    Tooltip,
-} from "recharts";
-import { TrendingUp, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
+import { TrendCard } from "@/components/trend-card";
+import { TrendMetrics } from "@/types";
 
 export default function TrendsPage() {
     const { trends } = useResearchStore();
 
+    // Scientific Sorting Algorithm
     const sortedTrends = useMemo(() => {
         if (!trends) return [];
-        return Object.entries(trends).sort(
-            ([, a]: any, [, b]: any) =>
-                (b.total_count || 0) - (a.total_count || 0)
-        );
+        return Object.entries(trends).sort(([, a], [, b]) => {
+            const metricA = a as TrendMetrics;
+            const metricB = b as TrendMetrics;
+
+            // 1. Separate Valid vs Invalid (Invalid always last)
+            if (metricA.is_trend_valid && !metricB.is_trend_valid) return -1;
+            if (!metricA.is_trend_valid && metricB.is_trend_valid) return 1;
+
+            // 2. Status Priority
+            const statusPriority: Record<string, number> = {
+                Emerging: 5,
+                New: 4,
+                Stable: 3,
+                Saturated: 2,
+                Declining: 1,
+                Sporadic: 0,
+            };
+
+            const scoreA = statusPriority[metricA.status] || 0;
+            const scoreB = statusPriority[metricB.status] || 0;
+
+            if (scoreA !== scoreB) return scoreB - scoreA; // Descending priority
+
+            // 3. Growth Rate (Desc)
+            if (metricA.growth_rate !== metricB.growth_rate) {
+                return (metricB.growth_rate || 0) - (metricA.growth_rate || 0);
+            }
+
+            // 4. Confidence (Desc)
+            return (
+                (metricB.trend_confidence || 0) -
+                (metricA.trend_confidence || 0)
+            );
+        });
     }, [trends]);
 
     return (
@@ -38,84 +55,19 @@ export default function TrendsPage() {
                     Topic Evolution
                 </h2>
                 <p className="text-muted-foreground">
-                    Analysis of concept frequency and growth over time.
+                    Analysis of concept frequency, stability, and semantic
+                    evolution over time.
                 </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {sortedTrends.map(([concept, data]: any) => {
-                    const chartData = Object.entries(data.years || {})
-                        .map(([year, count]) => ({ year, count }))
-                        .sort((a: any, b: any) => a.year - b.year);
-
-                    const growth = data.growth_rate || 0;
-
-                    return (
-                        <Card key={concept} className="flex flex-col">
-                            <CardHeader className="pb-2">
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <CardTitle className="capitalize">
-                                            {concept}
-                                        </CardTitle>
-                                        <CardDescription>
-                                            {data.total_count} Mentions
-                                        </CardDescription>
-                                    </div>
-                                    <StatusBadge status={data.status} />
-                                </div>
-                            </CardHeader>
-                            <CardContent className="flex-1 flex flex-col justify-end">
-                                <div className="flex items-center gap-2 mb-4 text-sm">
-                                    {growth > 0 ? (
-                                        <ArrowUpRight className="text-green-500 h-4 w-4" />
-                                    ) : growth < 0 ? (
-                                        <ArrowDownRight className="text-red-500 h-4 w-4" />
-                                    ) : (
-                                        <Minus className="text-yellow-500 h-4 w-4" />
-                                    )}
-                                    <span
-                                        className={
-                                            growth > 0
-                                                ? "text-green-500 font-bold"
-                                                : "text-muted-foreground"
-                                        }
-                                    >
-                                        {growth.toFixed(1)} Growth
-                                    </span>
-                                </div>
-
-                                <div className="h-24 w-full mt-auto">
-                                    <ResponsiveContainer
-                                        width="100%"
-                                        height="100%"
-                                    >
-                                        <BarChart data={chartData}>
-                                            <Tooltip
-                                                contentStyle={{
-                                                    backgroundColor:
-                                                        "hsl(var(--card))",
-                                                    border: "1px solid hsl(var(--border))",
-                                                }}
-                                                itemStyle={{
-                                                    color: "hsl(var(--foreground))",
-                                                }}
-                                                cursor={{
-                                                    fill: "hsl(var(--primary)/0.1)",
-                                                }}
-                                            />
-                                            <Bar
-                                                dataKey="count"
-                                                fill="hsl(var(--primary))"
-                                                radius={[4, 4, 0, 0]}
-                                            />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    );
-                })}
+                {sortedTrends.map(([concept, data]) => (
+                    <TrendCard
+                        key={concept}
+                        concept={concept}
+                        data={data as TrendMetrics}
+                    />
+                ))}
             </div>
 
             {sortedTrends.length === 0 && (

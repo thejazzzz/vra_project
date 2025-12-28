@@ -1,3 +1,4 @@
+//vra_web/src/types.ts
 export interface Paper {
     id: string;
     title: string;
@@ -14,6 +15,51 @@ export interface ResearchGap {
     rationale?: string;
     evidence?: string;
     [key: string]: any;
+}
+
+export type TrendStatus =
+    | "Emerging"
+    | "New"
+    | "Stable"
+    | "Saturated"
+    | "Declining"
+    | "Sporadic"
+    | "Unknown"
+    | string;
+
+export type TrendScope = "Global" | "Subfield" | "Niche" | "Unknown" | string;
+export type TrendStability =
+    | "Stable"
+    | "Volatile"
+    | "Transient"
+    | "Unknown"
+    | string;
+export type SemanticDrift = "Low" | "Moderate" | "High" | "Unknown" | string;
+
+export interface TrendMetrics {
+    status: TrendStatus;
+    scope: TrendScope;
+    stability: TrendStability;
+    semantic_drift: SemanticDrift;
+    trend_confidence: number; // 0.0 - 1.0
+    is_trend_valid: boolean;
+    growth_rate: number;
+    total_count: number;
+    last_active_year: number;
+    trend_vector: Array<{
+        year: number;
+        norm_freq: number;
+        count: number;
+        paper_ids: string[];
+        top_related: string[];
+    }>;
+}
+
+export interface TrendAnalysisResult {
+    metadata?: {
+        window_used?: { start: number; end: number };
+    };
+    trends: Record<string, TrendMetrics>;
 }
 
 export interface Hypothesis {
@@ -43,7 +89,7 @@ export interface ResearchState {
     // Graphs & Analysis
     knowledgeGraph: { nodes: any[]; links: any[] };
     authorGraph: { nodes: any[]; links: any[] };
-    trends: Record<string, any>;
+    trends: Record<string, TrendMetrics>;
     gaps: ResearchGap[];
     draftReport: string;
     globalAnalysis: any;
@@ -110,7 +156,7 @@ export interface BackendResearchState {
     selected_papers: any[];
     global_analysis: any;
     research_gaps: any[];
-    concept_trends: Record<string, any>;
+    concept_trends: Record<string, TrendMetrics>;
     hypotheses?: any[];
     reviews?: any[];
     author_graph: { nodes: any[]; links: any[] };
