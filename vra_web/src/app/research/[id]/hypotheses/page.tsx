@@ -1,3 +1,4 @@
+//vra_web/src/app/research/[id]/hypotheses/page.tsx
 "use client";
 
 import { useResearchStore } from "@/lib/store";
@@ -8,7 +9,7 @@ import { Check, AlertCircle, Lightbulb } from "lucide-react";
 
 export default function HypothesesPage() {
     const { hypotheses, reviews } = useResearchStore();
-    
+
     const getReview = (id: string) =>
         reviews?.find((r) => r.hypothesis_id === id);
 
@@ -79,12 +80,55 @@ export default function HypothesesPage() {
                                     "{hyp.statement}"
                                 </h3>
 
-                                <p className="text-sm text-muted-foreground mb-4 bg-muted/50 p-3 rounded-md border">
+                                <div className="text-sm text-muted-foreground mb-4 bg-muted/50 p-3 rounded-md border">
                                     <strong className="text-foreground">
                                         Evidence Base:
                                     </strong>{" "}
-                                    {hyp.supporting_evidence}
-                                </p>
+                                    {(() => {
+                                        const text =
+                                            hyp.supporting_evidence || "";
+                                        // Simple arXiv ID regex
+                                        const paperIdRegex =
+                                            /\b\d{4}\.\d{4,5}\b/g;
+                                        const matches =
+                                            text.match(paperIdRegex);
+
+                                        if (!matches) {
+                                            return (
+                                                <>
+                                                    {text}
+                                                    <span className="block mt-2 text-[10px] bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 px-2 py-1 rounded inline-block font-medium">
+                                                        Conceptual Rationale (No
+                                                        Direct Citation)
+                                                    </span>
+                                                </>
+                                            );
+                                        }
+
+                                        // Linkify detected IDs
+                                        // We split by the regex to preserve surrounding text
+                                        const parts = text.split(paperIdRegex);
+                                        return (
+                                            <span>
+                                                {parts.map((part, i) => (
+                                                    <span key={i}>
+                                                        {part}
+                                                        {matches[i] && (
+                                                            <a
+                                                                href={`https://arxiv.org/abs/${matches[i]}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-primary hover:underline font-mono"
+                                                            >
+                                                                {matches[i]}
+                                                            </a>
+                                                        )}
+                                                    </span>
+                                                ))}
+                                            </span>
+                                        );
+                                    })()}
+                                </div>
 
                                 {review && (
                                     <div className="mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">

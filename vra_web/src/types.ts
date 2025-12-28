@@ -1,4 +1,14 @@
 //vra_web/src/types.ts
+
+/**
+ * GLOBAL EVIDENCE CONVENTION
+ *
+ * Any analytical claim presented in the UI must expose at least one attributable
+ * source (Paper ID) or be explicitly marked as "contextual" / "conceptual".
+ *
+ * Format: Claim -> Evidence -> Paper ID -> Source Link
+ */
+
 export interface Paper {
     id: string;
     title: string;

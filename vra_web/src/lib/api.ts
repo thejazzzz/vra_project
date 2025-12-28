@@ -1,3 +1,4 @@
+//vra_web/src/lib/api.ts
 import axios from "axios";
 import {
     LoginRequest,
@@ -174,9 +175,13 @@ export const graphApi = {
     getGaps: async (query: string) =>
         api.get(`/graphs/gaps/${encodeURIComponent(query)}`),
     getConceptContext: async (concept: string) =>
-        api.get<{ concept: string; snippets: string[] }>(
-            `/graph-viewer/context/${encodeURIComponent(concept)}`
-        ),
+        api.get<{
+            concept: string;
+            snippets: Array<{
+                document: string;
+                metadata: { canonical_id: string };
+            }>;
+        }>(`/graph-viewer/context/${encodeURIComponent(concept)}`),
 };
 
 export default api;

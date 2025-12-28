@@ -1,3 +1,4 @@
+//vra_web/src/app/research/[id]/knowledge/page.tsx
 "use client";
 
 import dynamic from "next/dynamic";
@@ -46,7 +47,9 @@ export default function KnowledgeGraphPage() {
     }, []);
 
     const [contextLoading, setContextLoading] = useState(false);
-    const [contextSnippets, setContextSnippets] = useState<string[]>([]);
+    const [contextSnippets, setContextSnippets] = useState<
+        Array<{ document: string; metadata: { canonical_id: string } }>
+    >([]);
 
     // Fetch context on node selection
     useEffect(() => {
@@ -90,26 +93,26 @@ export default function KnowledgeGraphPage() {
     const params = useParams();
     const id = useMemo(() => {
         const rawId = params?.id;
-        if (!rawId || typeof rawId !== 'string') {
-            return '';
+        if (!rawId || typeof rawId !== "string") {
+            return "";
         }
         try {
             return decodeURIComponent(rawId);
         } catch (error) {
-            console.error('Failed to decode URL parameter:', error);
+            console.error("Failed to decode URL parameter:", error);
             return rawId; // Fallback to raw value
         }
     }, [params?.id]);
 
     const handleApprove = async () => {
         if (!id) {
-            console.error('Cannot approve: missing research ID');
+            console.error("Cannot approve: missing research ID");
             return;
         }
         try {
-        await submitGraphReview({ query: id, approved: true });
+            await submitGraphReview({ query: id, approved: true });
         } catch (error) {
-            console.error('Failed to submit graph review:', error);
+            console.error("Failed to submit graph review:", error);
             // Consider adding user-facing error notification here
         }
     };
@@ -256,16 +259,49 @@ export default function KnowledgeGraphPage() {
                                     Loading context...
                                 </div>
                             ) : contextSnippets.length > 0 ? (
-                                <ul className="space-y-2 list-disc pl-3">
+                                <ul className="space-y-3">
                                     {contextSnippets.map((snip, i) => (
-                                        <li key={i} className="leading-snug">
-                                            "{snip.slice(0, 150)}..."
+                                        <li
+                                            key={i}
+                                            className="leading-snug bg-background/50 p-2 rounded border border-border/50"
+                                        >
+                                            <p className="italic mb-1">
+                                                "{snip.document.slice(0, 150)}
+                                                ..."
+                                            </p>
+                                            {/* PROVENANCE FIX: Attribute Source */}
+                                            {snip.metadata?.canonical_id ? (
+                                                <a
+                                                    href={`https://arxiv.org/abs/${snip.metadata.canonical_id}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center justify-end gap-1 text-[10px] text-primary hover:underline font-mono"
+                                                >
+                                                    —{" "}
+                                                    {snip.metadata.canonical_id}
+                                                </a>
+                                            ) : (
+                                                <span className="flex justify-end text-[10px] text-muted-foreground">
+                                                    — System Context
+                                                </span>
+                                            )}
                                         </li>
                                     ))}
                                 </ul>
                             ) : (
                                 <p>No direct context found in papers.</p>
                             )}
+
+                            {/* FALSE AUTHORITY BADGE */}
+                            <div className="mt-4 pt-3 border-t border-border/50">
+                                <div className="text-[10px] text-muted-foreground flex gap-2 items-start bg-yellow-500/10 p-2 rounded">
+                                    <Info className="h-3 w-3 shrink-0 translate-y-0.5 text-yellow-500" />
+                                    <span>
+                                        Context snippets represent retrieved
+                                        evidence, not system facts.
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </ScrollArea>

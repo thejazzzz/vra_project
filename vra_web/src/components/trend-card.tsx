@@ -58,13 +58,14 @@ export function TrendCard({ concept, data }: TrendCardProps) {
     const isValid = data.is_trend_valid;
     const confidence = (data.trend_confidence || 0) * 100;
 
-    // Prepare chart data
+    // Prepare chart data with context
     const chartData = useMemo(() => {
         return (data.trend_vector || [])
             .map((tv) => ({
                 year: tv.year,
                 value: useNormFreq ? tv.norm_freq : tv.count,
                 raw_count: tv.count,
+                top_related: tv.top_related || [], // Context Exposure
             }))
             .sort((a, b) => a.year - b.year);
     }, [data.trend_vector, useNormFreq]);
@@ -186,7 +187,12 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                                         {data.stability || "Unknown Stability"}
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                        Stability based on variance
+                                        {/* Improved Stability Explanation */}
+                                        {data.stability === "Volatile"
+                                            ? "High variance in normalized frequency"
+                                            : data.stability === "Stable"
+                                            ? "Consistent frequency over time"
+                                            : "Based on NCF variance analysis"}
                                     </TooltipContent>
                                 </UITooltip>
                             </TooltipProvider>
@@ -212,7 +218,7 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                                     : "text-muted-foreground"
                             }
                         >
-                            {growth.toFixed(1)} Growth
+                            {(growth * 100).toFixed(1)}% Growth
                         </span>
                     </div>
                     {/* Toggle Switch */}
@@ -243,16 +249,71 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                 <div className="h-32 w-full mt-auto relative">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData}>
+                            <XAxis
+                                dataKey="year"
+                                fontSize={10}
+                                stroke="hsl(var(--muted-foreground))"
+                            />
+                            <YAxis
+                                fontSize={10}
+                                stroke="hsl(var(--muted-foreground))"
+                                width={30}
+                            />
                             <Tooltip
-                                contentStyle={{
-                                    backgroundColor: "hsl(var(--card))",
-                                    border: "1px solid hsl(var(--border))",
-                                    fontSize: "12px",
+                                content={({ active, payload, label }) => {
+                                    if (active && payload && payload.length) {
+                                        const dataPoint = payload[0].payload;
+                                        return (
+                                            <div className="bg-popover border border-border p-2 rounded shadow-lg text-xs">
+                                                <p className="font-bold mb-1">
+                                                    {label}
+                                                </p>
+                                                <p>
+                                                    {useNormFreq
+                                                        ? "Norm Freq"
+                                                        : "Count"}
+                                                    :{" "}
+                                                    {Number(
+                                                        payload[0].value
+                                                    ).toFixed(
+                                                        useNormFreq ? 3 : 0
+                                                    )}
+                                                </p>
+                                                {/* DATA EXPOSURE: Top Related Concepts */}
+                                                {dataPoint.top_related &&
+                                                    dataPoint.top_related
+                                                        .length > 0 && (
+                                                        <div className="mt-2 text-[10px] text-muted-foreground border-t pt-1">
+                                                            <strong>
+                                                                Co-occurs with:
+                                                            </strong>
+                                                            <div className="flex flex-wrap gap-1 mt-0.5">
+                                                                {dataPoint.top_related
+                                                                    .slice(0, 3)
+                                                                    .map(
+                                                                        (
+                                                                            c: string
+                                                                        ) => (
+                                                                            <span
+                                                                                key={
+                                                                                    c
+                                                                                }
+                                                                                className="bg-secondary px-1 rounded"
+                                                                            >
+                                                                                {
+                                                                                    c
+                                                                                }
+                                                                            </span>
+                                                                        )
+                                                                    )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                            </div>
+                                        );
+                                    }
+                                    return null;
                                 }}
-                                formatter={(value: any) => [
-                                    Number(value).toFixed(useNormFreq ? 3 : 0),
-                                    useNormFreq ? "Norm Freq" : "Count",
-                                ]}
                                 cursor={{ fill: "hsl(var(--primary)/0.1)" }}
                             />
                             <Bar
@@ -326,15 +387,19 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                         <div className="mt-2 text-xs space-y-1 max-h-40 overflow-y-auto pl-1 pr-1 border-t pt-2 scrollbar-thin scrollbar-thumb-muted-foreground/20">
                             {paperIds.length > 0 ? (
                                 paperIds.map((pid) => (
-                                    <div
+                                    <a
                                         key={pid}
-                                        className="flex items-center gap-2 p-1 hover:bg-muted/50 rounded"
+                                        href={`https://arxiv.org/abs/${pid}`} // PROVENANCE FIX: Direct Link
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 p-1 hover:bg-muted/50 rounded group/link transition-colors"
                                     >
-                                        <FileText className="h-3 w-3 text-muted-foreground" />
-                                        <span className="truncate flex-1 font-mono text-[10px]">
+                                        <FileText className="h-3 w-3 text-muted-foreground group-hover/link:text-primary" />
+                                        <span className="truncate flex-1 font-mono text-[10px] text-muted-foreground group-hover/link:text-primary group-hover/link:underline">
                                             {pid}
                                         </span>
-                                    </div>
+                                        <ArrowUpRight className="h-3 w-3 opacity-0 group-hover/link:opacity-100" />
+                                    </a>
                                 ))
                             ) : (
                                 <span className="text-muted-foreground italic">
