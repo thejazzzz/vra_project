@@ -1,8 +1,10 @@
+#File: agents/hypothesis_generation_agent.py
 import logging
 import json
 import re
 from typing import Dict, List, Any
 from services.llm_service import generate_response
+from services.research_service import get_relevant_context
 
 
 logger = logging.getLogger(__name__)
@@ -40,9 +42,31 @@ class HypothesisGenerationAgent:
         
         # If no strong gaps, use general context
         if not active_gaps:
-            context_str = "No specific structural gaps found. Focus on general emerging trends."
+             context_str = "No specific structural gaps found. Focus on general emerging trends."
         else:
-            context_str = "\n".join([f"- Gap in '{g.get('concept')}': {g.get('description')}" for g in active_gaps])
+             gap_contexts = []
+             for g in active_gaps:
+                 concept = g.get('concept')
+                 desc = g.get('description')
+                 
+                 # Targeted Retrieval
+                 retrieval_query = f"{concept} limitations challenges future work"
+                 evidence = get_relevant_context(
+                     retrieval_query, 
+                     limit=3, 
+                     max_tokens=600,
+                     agent_name="hypothesis_agent"
+                 )
+                 
+                 # FIX 6: Clearly label missing evidence
+                 if not evidence:
+                     evidence = "No strong supporting literature found."
+                 
+                 block = f"- GAP: {desc}\n  EVIDENCE FROM LITERATRE:\n{evidence}"
+                 gap_contexts.append(block)
+                 
+             context_str = "\n".join(gap_contexts)
+
         # Prepare prompt
         prompt = f"""
         You are a Senior Principal Researcher. Your goal is to formulate NOVEL, TESTABLE research hypotheses for the topic: '{query}'.

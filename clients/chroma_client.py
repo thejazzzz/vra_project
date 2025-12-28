@@ -81,10 +81,38 @@ class _ChromaClient:
                 metadatas=[metadata] if metadata else None
             )
 
-    def search(self, query: str, n_results: int = 5):
+    def search(self, query: str, n_results: int = 5) -> list[Dict[str, Any]]:
         try:
-            result = self._collection.query(query_texts=[query], n_results=n_results)
-            return result.get("documents", [[]])[0]
+            # We request documents, metadatas, and distances
+            result = self._collection.query(
+                query_texts=[query], 
+                n_results=n_results,
+                include=["documents", "metadatas", "distances"]
+            )
+            
+            # The result is a dict of lists (batch queries). We only sent one query.
+            # result['ids'][0] -> list of IDs
+            # result['documents'][0] -> list of docs
+            
+            ids = result.get("ids", [[]])[0]
+            docs = result.get("documents", [[]])[0]
+            metas = result.get("metadatas", [[]])[0]
+            dists = result.get("distances", [[]])[0]
+
+            structured_results = []
+            for i in range(len(ids)):
+                structured_results.append({
+                    "id": ids[i],
+                    "document": docs[i],
+                    "metadata": metas[i] if metas else {},
+                    "distance": dists[i] if dists else 0.0
+                })
+            
+            # FIX 1: Explicitly SORT by distance (ascending for cosine distance)
+            structured_results.sort(key=lambda x: x["distance"])
+                
+            return structured_results
+
         except Exception as e:
             logger.error(f"Chroma query failed: {e}", exc_info=True)
             return []

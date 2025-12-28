@@ -51,16 +51,18 @@ def _normalize_paper(p: Union[Paper, dict]) -> Dict[str, str]:
     if isinstance(p, dict):
         pid = p.get("canonical_id") or p.get("id") or p.get("paper_id") or ""
         title = p.get("title", "")
-        summary = p.get("summary", "")
+        # FIX 4: Check BOTH summary and abstract
+        summary = p.get("summary") or p.get("abstract") or ""
     else:
         pid = p.id
         title = p.title
+        # FIX 4: Check BOTH attributes
         summary = getattr(p, "summary", "") or getattr(p, "abstract", "")
 
     return {
         "id": clean_text(pid),
         "title": clean_text(title),
-        "summary": clean_text(summary or p.get("abstract", "") if isinstance(p, dict) else summary),
+        "summary": clean_text(summary),
     }
 
 
@@ -95,6 +97,8 @@ def _normalize_relation(r: dict) -> Optional[Dict[str, str]]:
 #  Prompt Builder
 # ============================================================
 
+from services.research_service import get_relevant_context
+
 def _build_context(
     query: str,
     papers: Optional[List[Union[Paper, dict]]],
@@ -126,19 +130,28 @@ def _build_context(
         f"INSTRUCTION: {instruction}\n"
         f"{relation_types}\n"
     )
-
-    if not papers:
-        return f"{prefix}User query only.\nQuery: {q}"
-
+    
+    # Analyze provided papers
     items: List[Dict[str, str]] = []
+    if papers:
+        for p in papers[:5]:
+            norm = _normalize_paper(p)
+            if is_nonempty_text(norm["title"]) or is_nonempty_text(norm["summary"]):
+                items.append(norm)
 
-    for p in papers[:5]:
-        norm = _normalize_paper(p)
-        if is_nonempty_text(norm["title"]) or is_nonempty_text(norm["summary"]):
-            items.append(norm)
+    # Retrieval Expansion (if papers are scarce)
+    retrieved_context = ""
+    if len(items) < 3:
+         logger.info(f"AnalysisService: Input papers scarce ({len(items)}). Triggering expansion.")
+         retrieved_context = get_relevant_context(
+             q, 
+             limit=3, 
+             max_tokens=1500,
+             agent_name="analysis_service_expansion"
+         )
 
-    if not items:
-        return f"{prefix}No usable paper metadata.\nQuery: {q}"
+    if not items and not retrieved_context:
+        return f"{prefix}No usable paper metadata or retrieved context.\nQuery: {q}"
 
     lines = [f"{prefix}User query: {q}", "", "Relevant papers:"]
 
@@ -151,6 +164,9 @@ def _build_context(
                 f"Summary: {p['summary']}",
             ]
         )
+        
+    if retrieved_context:
+        lines.append(f"\n[Additional Context from Knowledge Base]:\n{retrieved_context}")
 
     return "\n".join(lines)
 

@@ -336,3 +336,73 @@ async def add_manual_paper(
         return {"success": False, "error": str(e)}
     finally:
         db.close()
+
+
+def get_relevant_context(
+    query: str, 
+    limit: int = 5, 
+    max_tokens: int = 3000, 
+    agent_name: str = "unknown"
+) -> str:
+    """
+    Retrieves semantically relevant context from Chroma.
+    Enforces token budgets, deduplication, and provenance.
+    """
+    if not query:
+        return ""
+
+    # 1. Clean & Normalize
+    clean_query = clean_text(query).lower()
+    
+    # 2. Retrieval
+    client = get_client()
+    results = client.search(clean_query, n_results=limit)
+    
+    # 2b. Fallback Strategy
+    if not results and len(clean_query.split()) > 5:
+        logger.info(f"RETRIEVAL_FALLBACK: '{clean_query}' yielded 0. Retrying fallback.")
+        fallback_query = " ".join(clean_query.split()[:5])
+        results = client.search(fallback_query, n_results=limit)
+
+    # 3. Log Retrieval Stats
+    logger.info(f"RETRIEVAL: Agent={agent_name} Query='{clean_query}' k={limit} Found={len(results)}")
+
+    # 4. Filter & Format
+    seen_ids = set()
+    context_chunks = []
+    current_tokens = 0
+    
+    for res in results:
+        # Distance Threshold (approx 1.5 for cosine in Chroma is loose, but safe)
+        # FIX 2: Note that hnsw:space=cosine implies distance = 1 - cosine_similarity.
+        # Range is [0, 2]. 0 is identical, 1 is orthogonal, 2 is opposite.
+        if res.get("distance", 0) > 1.5:
+             continue
+             
+        meta = res.get("metadata", {})
+        pid = meta.get("canonical_id") or res.get("id")
+        
+        if pid in seen_ids:
+            continue
+        seen_ids.add(pid)
+        
+        text = res.get("document", "")
+        if not text:
+            continue
+            
+        # Provenance Header
+        header = f"[Source: {pid}]"
+        chunk = f"{header}\n{text}\n"
+        
+        # Token Check (FIX 3: Conservative estimate using 4.2 chars/token)
+        chunk_tokens = int(len(chunk) / 4.2)
+        if current_tokens + chunk_tokens > max_tokens:
+            break
+            
+        context_chunks.append(chunk)
+        current_tokens += chunk_tokens
+
+    final_context = "\n".join(context_chunks)
+    logger.info(f"RETRIEVAL_FINAL: TokenUsage={current_tokens} Chunks={len(context_chunks)}")
+    
+    return final_context

@@ -5,14 +5,14 @@ from datetime import datetime
 import enum
 
 class UserRole(str, enum.Enum):
-    STUDENT = "student"
-    RESEARCHER = "researcher"
-    ADMIN = "admin"
+    STUDENT = "STUDENT"
+    RESEARCHER = "RESEARCHER"
+    ADMIN = "ADMIN"
 
 class SessionStatus(str, enum.Enum):
-    RUNNING = "running"
-    COMPLETED = "completed"
-    ERROR = "error"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    ERROR = "ERROR"
     AWAITING_INPUT = "awaiting_input"
 
 class User(Base):
@@ -33,7 +33,7 @@ class ResearchSession(Base):
     session_id = Column(String, primary_key=True, index=True) # Query hash or UUID
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     query = Column(String, nullable=False)
-    status = Column(Enum(SessionStatus), default=SessionStatus.RUNNING)
+    status = Column(Enum(SessionStatus, values_callable=lambda x: [e.value for e in x]), default=SessionStatus.RUNNING)
     last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships

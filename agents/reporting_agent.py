@@ -3,6 +3,7 @@ import logging
 import os
 from typing import Dict, Any
 from services.analysis_service import generate_report_content
+from services.research_service import get_relevant_context
 
 logger = logging.getLogger(__name__)
 
@@ -39,22 +40,18 @@ class ReportingAgent:
         # Prepare Data Context
         # ---------------------------------------------------------
         
-        # Paper Summaries (Parsed)
-        paper_summaries = state.get("paper_structured_summaries", {})
-        papers_context = "## Detailed Paper Analysis\n"
-        if paper_summaries:
-            for pid, summary in paper_summaries.items():
-                papers_context += f"\n### ID: {pid}\n"
-                if isinstance(summary, dict):
-                    status = summary.get("_status", "ok")
-                    reliability = f"(Reliability: {status})" if status != "ok" else ""
-                    papers_context += f"{reliability}\n"
-                    papers_context += f"Problem: {summary.get('problem', 'N/A')}\n"
-                    papers_context += f"Results: {summary.get('results', 'N/A')}\n"
-                else:
-                    papers_context += f"{summary}\n"
-        else:
-             papers_context = "No detailed summaries available."
+        # RETRIEVAL REPLACEMENT: use semantics instead of dumping state
+        retrieval_query = f"{query} overview implications state of the art"
+        papers_context = get_relevant_context(
+            retrieval_query, 
+            limit=7, 
+            max_tokens=2500,
+            agent_name="reporting_agent"
+        )
+        
+        if not papers_context:
+            # FIX 5: Neutral fallback message
+            papers_context = "No detailed papers retrieved."
 
         # Gaps (Anchored)
         gaps = state.get("research_gaps", [])
@@ -114,7 +111,7 @@ class ReportingAgent:
             f"{gaps_context}\n"
             f"{trends_context}\n"
             f"{author_context}\n"
-            f"{papers_context}\n"
+            f"## Detailed Paper Analysis\n{papers_context}\n"
         )
         
         prompt = (
