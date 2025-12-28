@@ -66,7 +66,8 @@ async def run_step(state: VRAState) -> VRAState:
             try:
                 trends = detect_concept_trends(
                     state.get("selected_papers", []),
-                    state.get("paper_concepts", {})
+                    state.get("paper_concepts", {}),
+                    paper_relations=state.get("paper_relations", {})
                 )
                 state["concept_trends"] = trends
             except Exception as e:
