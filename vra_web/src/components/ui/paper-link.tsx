@@ -18,13 +18,44 @@ export function PaperLink({
     className,
     children,
 }: PaperLinkProps) {
-    const { openPaperPreview } = useUIStore();
+    // Safe store access
+    const ui = useUIStore();
+    const openPaperPreview = ui?.openPaperPreview;
 
     const handleClick = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!paperId || !openPaperPreview) return; // Guard
         openPaperPreview(paperId);
     };
+
+    if (!paperId) {
+        return (
+            <span
+                className={cn(
+                    "text-xs text-muted-foreground italic",
+                    className
+                )}
+            >
+                [missing source]
+            </span>
+        );
+    }
+
+    if (!openPaperPreview) {
+        // Optional: Log missing handler
+        // console.warn("PaperLink: openPaperPreview handler missing");
+        return (
+            <span
+                className={cn(
+                    "text-xs text-muted-foreground italic",
+                    className
+                )}
+            >
+                [preview unavailable]
+            </span>
+        );
+    }
 
     return (
         <>
@@ -37,6 +68,7 @@ export function PaperLink({
                         className
                     )}
                     title={`Inspect evidence: ${paperId}`}
+                    aria-label={`Inspect evidence: ${paperId}`}
                 >
                     {children || paperId}
                     <ArrowUpRight className="h-3 w-3 opacity-50" />
@@ -52,6 +84,7 @@ export function PaperLink({
                         className
                     )}
                     title={`Inspect evidence: ${paperId}`}
+                    aria-label={`Inspect evidence: ${paperId}`}
                 >
                     <FileText className="h-3 w-3 text-muted-foreground" />
                     <span>{children || paperId}</span>

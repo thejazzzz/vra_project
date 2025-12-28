@@ -24,7 +24,7 @@ export function PaperPreviewDialog({
     isOpen,
     onOpenChange,
 }: PaperPreviewDialogProps) {
-    const type = identifySourceType(paperId) || "Unknown";
+    const type = identifySourceType(paperId);
     const url = getPaperUrl(paperId);
 
     return (

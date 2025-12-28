@@ -6,10 +6,10 @@ import { ReactNode } from "react";
 const ARXIV_REGEX = /\b\d{4}\.\d{4,5}(v\d+)?\b/i;
 // simple DOI: 10.xxxx/yyyy
 const DOI_REGEX = /\b10\.\d{4,9}\/[-._;()/:a-zA-Z0-9]+\b/i;
-// Semantic Scholar: s2: followed by 40 hex chars, or just 40 hex chars if unambiguous (usually we expect s2: prefix in this app context to distinguish from random hashes, but I will allow raw hex key if 40 chars long)
-// Actually, looking at the user screenshot, it is explicitly `s2:`. Let's enforce `s2:` or just high confidence hex.
-// Safer to check `s2:` prefix OR just 40 hex chars.
-const S2_REGEX = /\b(s2:)?[0-9a-f]{40}\b/i;
+// Semantic Scholar: Enforce s2: prefix
+const S2_REGEX = /\b(s2:)[0-9a-f]{40}\b/i;
+// Generic URL Protocol
+const URL_REGEX = /^https?:\/\//i;
 
 export type SourceType =
     | "arXiv"
@@ -25,7 +25,10 @@ export function isPaperId(str: string): boolean {
     if (!str) return false;
     const clean = str.trim();
     return (
-        ARXIV_REGEX.test(clean) || DOI_REGEX.test(clean) || S2_REGEX.test(clean)
+        ARXIV_REGEX.test(clean) ||
+        DOI_REGEX.test(clean) ||
+        S2_REGEX.test(clean) ||
+        URL_REGEX.test(clean)
     );
 }
 
@@ -38,7 +41,7 @@ export function identifySourceType(id: string): SourceType {
     if (ARXIV_REGEX.test(clean)) return "arXiv";
     if (DOI_REGEX.test(clean)) return "DOI";
     if (S2_REGEX.test(clean)) return "SemanticScholar";
-    if (clean.startsWith("http")) return "URL";
+    if (URL_REGEX.test(clean)) return "URL";
     return "Unknown";
 }
 

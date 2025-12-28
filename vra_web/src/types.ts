@@ -98,7 +98,16 @@ export interface ResearchState {
 
     // Graphs & Analysis
     knowledgeGraph: { nodes: any[]; links: any[] };
-    authorGraph: { nodes: any[]; links: any[] };
+    authorGraph: {
+        nodes: any[];
+        links: any[];
+        meta?: {
+            edges_present: boolean;
+            metrics_valid: boolean;
+            warning?: string | null;
+            [key: string]: any;
+        };
+    };
     trends: Record<string, TrendMetrics>;
     gaps: ResearchGap[];
     draftReport: string;
@@ -169,7 +178,15 @@ export interface BackendResearchState {
     concept_trends: Record<string, TrendMetrics>;
     hypotheses?: any[];
     reviews?: any[];
-    author_graph: { nodes: any[]; links: any[] };
+    author_graph: {
+        nodes: any[];
+        links: any[];
+        meta?: {
+            edges_present: boolean;
+            metrics_valid: boolean;
+            [key: string]: any;
+        };
+    };
     knowledge_graph: { nodes: any[]; links: any[] };
     draft_report: string;
     user_feedback?: string;
