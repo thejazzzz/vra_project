@@ -172,7 +172,7 @@ export interface LocalPaper {
 
 export interface UploadPaperResponse {
     success: boolean;
-    paper_id: string | number;
+    paper_id: string;
     canonical_id: string;
     title: string;
     source: string;

@@ -28,13 +28,24 @@ async def upload_paper(
     MAX_SIZE = 10 * 1024 * 1024
     
     try:
-        content = await file.read()
+        # Check size before reading entire file into memory
+        chunk_size = 8192
+        content = bytearray()
+        total_size = 0
         
-        if len(content) > MAX_SIZE:
-             raise HTTPException(status_code=413, detail="File too large (limit 10MB)")
-             
+        while True:
+            chunk = await file.read(chunk_size)
+            if not chunk:
+                break
+            total_size += len(chunk)
+            if total_size > MAX_SIZE:
+                raise HTTPException(status_code=413, detail="File too large (limit 10MB)")
+            content.extend(chunk)
+        
+        content = bytes(content)
+        
         if len(content) == 0:
-             raise HTTPException(status_code=400, detail="Empty file")
+            raise HTTPException(status_code=400, detail="Empty file")
 
         result = await ingest_local_file(content, file.filename, current_user.id)
         

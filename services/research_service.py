@@ -60,7 +60,7 @@ async def download_pdf(pdf_url: Optional[str]) -> str:
 # ------------------------------------------------------------
 # MAIN PIPELINE
 # ------------------------------------------------------------
-async def process_research_task(query: str, include_paper_ids: List[str] = []) -> Dict:
+async def process_research_task(query: str, include_paper_ids: Optional[List[str]] = None) -> Dict:
     """
     PIPELINE:
     0. Fetch explicitly included local papers
@@ -70,6 +70,9 @@ async def process_research_task(query: str, include_paper_ids: List[str] = []) -
     4. DB upsert (merged metadata + hash dedupe)
     5. Vector embeddings (Chroma)
     """
+    if include_paper_ids is None:
+        include_paper_ids = []
+    
     db = SessionLocal()
 
     stored: List[Tuple[Paper, dict]] = []
@@ -147,9 +150,7 @@ async def process_research_task(query: str, include_paper_ids: List[str] = []) -
 
         vector_client = get_client()
 
-        # --------------------------------------------
-        # 3. DB UPSERT (NO COMMIT INSIDE LOOP)
-        # --------------------------------------------
+
         # --------------------------------------------
         # 3. DB UPSERT (NO COMMIT INSIDE LOOP)
         # --------------------------------------------
@@ -233,6 +234,7 @@ async def process_research_task(query: str, include_paper_ids: List[str] = []) -
                         published_year=paper.get("year"), # Explicitly set column
                         arxiv_id=paper.get("paper_id") if paper.get("source") == "arxiv" else None,
                         paper_metadata={
+                            "source": paper.get("source", "unknown"),
                             paper.get("source", "unknown"): paper,
                             "pdf_hashes": hashes,
                             "year": paper.get("year"), # redundant but safe
@@ -333,9 +335,9 @@ async def ingest_local_file(
     db = SessionLocal()
     try:
         # 1. Extract Text
-        text = extract_text_from_pdf_bytes(file_bytes)
+        text = await asyncio.to_thread(extract_text_from_pdf_bytes, file_bytes)
         if not is_nonempty_text(text):
-             return {"success": False, "error": "Failed to extract text from PDF or empty file."}
+            return {"success": False, "error": "Failed to extract text from PDF or empty file."}
 
         # 2. Generate Metadata
         # Use filename as title (remove extension)
@@ -365,6 +367,7 @@ async def ingest_local_file(
                 paper_metadata={
                     "source": "local_file",
                     "user_uploaded": True,
+                    "user_id": user_id,  # [REF] Using user_id for association
                     "filename": filename,
                     "authors": ["User Upload"],
                     "pdf_hashes": [hashlib.md5(text.encode()).hexdigest()]
@@ -386,14 +389,16 @@ async def ingest_local_file(
         # Ideally we should chunk the full text, but RAG expects `db_obj.abstract` usually?
         # Let's align with `add_manual_paper`: store abstract.
         
-        vector_client.store(
+        await asyncio.to_thread(
+            vector_client.store,
             chroma_id,
             db_obj.abstract,
             {
                 "paper_db_id": db_obj.id, 
                 "canonical_id": db_obj.canonical_id,
                 "source": "local_file",
-                "user_uploaded": True
+                "user_uploaded": True,
+                "user_id": user_id
             }
         )
         

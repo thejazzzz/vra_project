@@ -78,7 +78,7 @@ export function LocalPaperUpload({ onUploadSuccess }: LocalPaperUploadProps) {
                     onChange={handleFileChange}
                 />
                 <span className="text-xs text-muted-foreground">
-                    Max 10MB. Text extracted locally.
+                    Max 10MB. PDF files only.
                 </span>
             </div>
 

@@ -28,14 +28,13 @@ export function LocalPaperList({
                     >
                         <div className="flex items-center gap-2 min-w-0">
                             <Checkbox
-                                id={`paper-${paper.paper_id}`}
+                                id={`paper-${paper.canonical_id}`} // Use canonical_id for DOM consistency with toggle
                                 checked={paper.included}
-                                onCheckedChange={(checked) =>
-                                    onToggle(
-                                        paper.canonical_id,
-                                        checked as boolean
-                                    )
-                                }
+                                onCheckedChange={(checked) => {
+                                    // Handle boolean | 'indeterminate'
+                                    const isChecked = checked === true;
+                                    onToggle(paper.canonical_id, isChecked);
+                                }}
                             />
                             <div className="truncate flex items-center gap-2">
                                 <FileText className="h-3 w-3 text-muted-foreground" />

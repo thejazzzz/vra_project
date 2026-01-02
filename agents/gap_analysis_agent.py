@@ -24,6 +24,7 @@ class GapAnalysisAgent:
             KG = nx.node_link_graph(kg_data)
         except Exception as e:
             logger.error(f"Failed to parse graphs for gap analysis: {e}")
+            state["research_gaps"] = []
             return state
         
         gaps = []

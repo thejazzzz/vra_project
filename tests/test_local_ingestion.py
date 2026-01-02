@@ -74,38 +74,38 @@ def test_local_ingestion_flow():
                     print(f"\nUPLOAD FAILED: {response.status_code} {response.text}")
 
                 assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert "paper_id" in data
-            assert data["title"] == "My Proposal"
-            
-            paper_id = data["paper_id"]
-            canonical_id = data["canonical_id"]
-            fake_paper.canonical_id = canonical_id
-            
-            # --- STEP 2: RESEARCH WITH LOCAL ID ---
-            # Mock Data Acquisition to return nothing external
-            with patch("services.research_service.data_acquisition_agent.run", new_callable=AsyncMock) as mock_agent:
-                mock_agent.return_value = []
+                data = response.json()
+                assert data["success"] is True
+                assert "paper_id" in data
+                assert data["title"] == "My Proposal"
                 
-                payload = {
-                    "query": "analyze my proposal",
-                    "include_paper_ids": [paper_id]
-                }
+                paper_id = data["paper_id"]
+                canonical_id = data["canonical_id"]
+                fake_paper.canonical_id = canonical_id
                 
-                res_research = client.post("/research/", json=payload)
-                assert res_research.status_code == 200
-                res_data = res_research.json()
-                
-                assert res_data["status"] == "success"
-                papers = res_data["data"]["papers"]
-                
-                # Should have 1 paper (our local one)
-                assert len(papers) == 1
-                p = papers[0]
-                assert p["title"] == "My Proposal"
-                assert p["abstract"] == "This is the content of the local PDF paper."
-                assert p["source"] == "local_file"
-                
-                # Verify it wasn't deduped away
-                assert p["canonical_id"] == canonical_id
+                # --- STEP 2: RESEARCH WITH LOCAL ID ---
+                # Mock Data Acquisition to return nothing external
+                with patch("services.research_service.data_acquisition_agent.run", new_callable=AsyncMock) as mock_agent:
+                    mock_agent.return_value = []
+                    
+                    payload = {
+                        "query": "analyze my proposal",
+                        "include_paper_ids": [str(paper_id)]
+                    }
+                    
+                    res_research = client.post("/research/", json=payload)
+                    assert res_research.status_code == 200
+                    res_data = res_research.json()
+                    
+                    assert res_data["status"] == "success"
+                    papers = res_data["data"]["papers"]
+                    
+                    # Should have 1 paper (our local one)
+                    assert len(papers) == 1
+                    p = papers[0]
+                    assert p["title"] == "My Proposal"
+                    assert p["abstract"] == "This is the content of the local PDF paper."
+                    assert p["source"] == "local_file"
+                    
+                    # Verify it wasn't deduped away
+                    assert p["canonical_id"] == canonical_id
