@@ -1,6 +1,49 @@
 # File: state/state_schema.py
 from typing import TypedDict, List, Optional, Dict, Any, Literal
 
+# Phase 3.2: Interactive Reporting Types
+class SectionHistory(TypedDict):
+    revision: int
+    content: str       # Markdown
+    content_hash: str  # SHA256 integrity check
+    feedback: Optional[str]
+    timestamp: str
+    prompt_version: str # e.g. "v1.2"
+    model_name: str     # e.g. "gpt-4o"
+
+class ReportSectionState(TypedDict):
+    section_id: str
+    status: Literal["planned", "generating", "review", "accepted", "error"]
+    title: str
+    description: str
+    depends_on: List[str] # IDs of sections that must be ACCEPTED before this one starts
+    template_key: str     # Key for prompt template
+    
+    content: Optional[str] # Current active content
+    revision: int          # Current revision number
+    max_revisions: int     # Default: 3
+    history: List[SectionHistory]
+    quality_scores: Optional[Dict[str, float]] # e.g. {"coherence": 0.9}
+
+class ReportState(TypedDict):
+    # Global Lifecycle
+    report_status: Literal["idle", "planned", "in_progress", "awaiting_final_review", "validating", "finalizing", "exporting", "completed", "failed"]
+    sections: List[ReportSectionState]
+    
+    # Concurrency & Integrity
+    locks: Dict[str, Any] # {"report": bool, "sections": Dict[str, bool]}
+    last_successful_step: Optional[Dict[str, str]] # {"section_id": "...", "phase": "..."}
+    section_order_hash: str # SHA256 of planner output
+    
+    # User Intent Guards
+    user_confirmed_start: bool
+    user_confirmed_finalize: bool
+    
+    # Metadata
+    created_at: str
+    updated_at: str
+    metrics: Dict[str, Any] # { "avg_revisions": 1.2, "generation_time_ms": ... }
+
 class VRAState(TypedDict, total=False):
     query: str
     user_id: str
@@ -35,8 +78,9 @@ class VRAState(TypedDict, total=False):
     knowledge_graph: Dict[str, Any]
     citation_graph: Dict[str, Any]
 
-    # Report
-    draft_report: Optional[str]
+    # Report (Phase 3.2 Enhanced)
+    draft_report: Optional[str] # Deprecated but kept for backward compatibility
+    report_state: ReportState   # New structured state
 
     # HITL
     current_step: str

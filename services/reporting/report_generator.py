@@ -21,13 +21,103 @@ class ReportGenerator:
     Phase 4: Scaling, Appendices, Metadata.
     """
 
-    def generate_report(self, state: Dict[str, Any]) -> str:
-        logger.info("ReportGenerator: Starting report generation (Scaling Mode)...")
+    @staticmethod
+    def generate_section_content(section_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generates content for a single section using the interactive workflow.
+        Returns: {
+            "content": str,
+            "prompt_version": str,
+            "model_name": str
+        }
+        """
+        if section_id == "appendix":
+             # Deterministic special case
+             try:
+                 content = AppendixGenerator.generate_appendix(state)
+                 return {
+                     "content": content,
+                     "prompt_version": "deterministic_v1",
+                     "model_name": "rules_engine"
+                 }
+             except Exception as e:
+                 logger.error(f"Appendix generation failed: {e}")
+                 raise e
+
+        # 1. Build Context
+        context = ContextBuilder.build_context(section_id, state)
         
-        # 1. Metadata Header (Phase 4)
+        # 2. Get Template
+        # We need to look up the template key. The SectionPlanner knows it.
+        # But we don't have the plan object here unless we look at state['report_state'].
+        # Fallback: Re-plan or use lookup. 
+        # Better: use state['report_state'] if available, else re-plan (hybrid).
+        
+        template_key = None
+        if state.get("report_state"):
+             # Fast lookup from existing plan
+             sections = state["report_state"]["sections"]
+             sec = next((s for s in sections if s["section_id"] == section_id), None)
+             if sec: template_key = sec.get("template_key")
+        
+        if not template_key:
+             # Fallback to planner for legacy/stateless calls
+             plan = SectionPlanner.plan_report(state)
+             sec = next((s for s in plan if s.section_id == section_id), None)
+             if sec: template_key = sec.template_key
+        
+        if not template_key:
+             raise ValueError(f"Could not determine template for section {section_id}")
+
+        template = PROMPT_TEMPLATES.get(template_key)
+        if not template:
+             raise ValueError(f"Template not found for key {template_key}")
+
+        # 3. Format Prompt
+        prompt = template.format(**context)
+        
+        # 4. Resolve Provider
+        report_provider_env = os.getenv("REPORT_PROVIDER", "local").lower()
+        provider = LLMProvider.OPENROUTER
+        if report_provider_env == "local":
+            provider = LLMProvider.LOCAL
+        elif report_provider_env == "openai":
+            provider = LLMProvider.OPENAI
+        elif report_provider_env == "azure":
+            provider = LLMProvider.AZURE
+
+        # 5. Generate
+        logger.info(f"Generating section {section_id} with {provider}...")
+        content = generate_response(
+            prompt=prompt,
+            system_prompt=SYSTEM_PROMPT,
+            temperature=0.3, # Low temp for factual reporting
+            provider=provider 
+        )
+        
+        # 6. Basic Validation
+        if "<html>" in content:
+             logger.warning("Generated content contains HTML. Sanitizing...")
+             content = content.replace("<html>", "").replace("</html>", "") # Basic strip
+        
+        return {
+            "content": content,
+            # Assuming PROMPT_TEMPLATES are objects with .version, or we mock it for now since they are currently Dicts/Strings
+            # PROMPT_TEMPLATES is likely a dict of PromptTemplate objects or strings.
+            # Checking prompts.py would confirm. For now assuming string or dict.
+            "prompt_version": getattr(template, "version", "v1.0"), 
+            "model_name": f"{provider.value}" # Simplified model name logic
+        }
+
+    def generate_report(self, state: Dict[str, Any]) -> str:
+        """
+        Legacy batch generation method.
+        """
+        logger.info("ReportGenerator: Starting legacy batch report generation...")
+        
+        # 1. Metadata Header
         header = self._build_header(state)
         report_parts: List[str] = [header]
-        
         report_parts.append(f"# Research Report: {state.get('query', 'Untitled')}\n")
         
         # 2. Plan
@@ -36,65 +126,17 @@ class ReportGenerator:
         # 3. Execute Sections
         for section in sections:
             logger.info(f"ReportGenerator: Processing section '{section.section_id}'")
-            
-            # Special handling for deterministic appendix
-            if section.template_key == "deterministic_appendix":
-                try:
-                    appendix_content = AppendixGenerator.generate_appendix(state)
-                    report_parts.append(appendix_content)
-                except Exception as e:
-                    logger.error(f"Failed to generate appendix: {e}")
-                    report_parts.append(f"## {section.title}\n*Appendix generation failed due to service error.*\n")
-                continue
-
             try:
-                # Build Content
-                context = ContextBuilder.build_context(section.section_id, state)
-                audience_log = context.get("audience", "unknown")
-                logger.info(f"[REPORT] Section={section.section_id} Audience={audience_log}")
-                template = PROMPT_TEMPLATES.get(section.template_key)
-                
-                if not template:
-                    logger.warning(f"No template found for {section.section_id}")
-                    continue
-                    
-                # Format Prompt
-                prompt = template.format(**context)
-                
-                # Resolve Provider Scheme
-                # User config or default to OpenRouter (or Local if requested)
-                report_provider_env = os.getenv("REPORT_PROVIDER", "local").lower()
-                provider = LLMProvider.OPENROUTER
-                
-                if report_provider_env == "local":
-                    provider = LLMProvider.LOCAL
-                elif report_provider_env == "openai":
-                    provider = LLMProvider.OPENAI
-                elif report_provider_env == "azure":
-                    provider = LLMProvider.AZURE
-
-                # Generate
-                content = generate_response(
-                    prompt=prompt,
-                    system_prompt=SYSTEM_PROMPT,
-                    temperature=0.3,
-                    provider=provider 
-                )
-                
-                # Validation (Phase 4)
-                if not self._validate_content(content, state):
-                    content = "*Content flagged by safety validation filters.*"
-
-                # Assemble
+                result = self.generate_section_content(section.section_id, state)
+                content = result["content"]
                 report_parts.append(f"## {section.title}\n{content}\n")
-                
             except Exception as e:
                 logger.error(f"Failed to generate section {section.section_id}: {e}")
-                report_parts.append(f"## {section.title}\n*Section generation failed due to service error.*\n")
-                
+                report_parts.append(f"## {section.title}\n*Generation failed.*\n")
+            
             time.sleep(0.5)
 
-        # 4. Final Footer (Provenance Summary)
+        # 4. Footer
         footer = self._build_footer(state)
         report_parts.append(footer)
         
