@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import logging
 
 from api.dependencies.auth import get_current_user
-from database.models.auth_models import User
+from database.models.auth_models import User, UserRole
 from services.reporting.reporting_service import InteractiveReportingService
 from services.reporting.export_service import ExportService
 
@@ -47,18 +47,60 @@ async def initialize_report(
         logger.error(f"Init report failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal error")
 
+class ResetSectionRequest(BaseModel):
+    session_id: str
+    force: bool = False
+
+@router.post("/section/{section_id}/reset")
+async def reset_section(
+    section_id: str,
+    payload: ResetSectionRequest,
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    # Auth Check: Only Admins can force reset
+    # Auth Check: Only Admins can force reset
+    if payload.force:
+        # Role-based permission check
+        # Explicitly check for 'role' attribute existence (though model guarantees it)
+        if not hasattr(current_user, "role") or current_user.role != UserRole.ADMIN:
+             logger.warning(f"Unauthorized force reset attempt by user {current_user.id}")
+             raise HTTPException(
+                 status_code=403, 
+                 detail="Insufficient permissions. Force reset requires admin privileges."
+             )
+
+    try:
+        section_state = InteractiveReportingService.reset_section(
+            session_id=payload.session_id,
+            user_id=current_user.id,
+            section_id=section_id,
+            force=payload.force
+        )
+        return {"section": section_state}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Reset section failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @router.get("/state/{session_id}")
 async def get_report_state(
     session_id: str,
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    state = InteractiveReportingService.get_report_state(session_id, current_user.id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Report state not found")
-    return {"report_state": state}
+    try:
+        state = InteractiveReportingService.get_report_state(session_id, current_user.id)
+        if not state:
+            raise HTTPException(status_code=404, detail="Report state not found")
+        return {"report_state": state}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get report state failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/section/{section_id}/generate")
-async def generate_section(
+def generate_section(
     section_id: str,
     payload: Dict[str, str] = Body(...), # Expects {"session_id": "..."}
     current_user: User = Depends(get_current_user)
@@ -68,27 +110,23 @@ async def generate_section(
         raise HTTPException(status_code=400, detail="session_id required")
     
     try:
-        # Check lock state implicitly via service or add check here for nicer UI msg
-        # Service handles it but we can catch ValueError
-        
-        section_state = await InteractiveReportingService.generate_section(
+        section_state = InteractiveReportingService.generate_section(
             session_id=session_id,
             user_id=current_user.id,
             section_id=section_id
         )
         return {"section": section_state}
     except ValueError as e:
-        # User error (locked, max revisions, etc)
-        # Return 409 Conflict if locked? Or 400? 
-        # 423 Locked is semantically strict, 400 with message is fine.
         msg = str(e)
         if "locked" in msg.lower() or "generating" in msg.lower():
-             # Return structured error for UI to show timer
-             return {
-                 "status": "error", 
-                 "detail": msg, 
-                 "retry_after": 30 # Suggestion
-             }
+             # Return HTTP 423 Locked for concurrency constraints
+             raise HTTPException(
+                 status_code=423, # Locked
+                 detail={
+                     "message": msg,
+                     "retry_after": 30
+                 }
+             )
         raise HTTPException(status_code=400, detail=msg)
     except Exception as e:
         logger.error(f"Generate section failed: {e}", exc_info=True)
@@ -115,30 +153,6 @@ async def review_section(
         logger.error(f"Review failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Review processing failed")
 
-@router.post("/section/{section_id}/reset")
-async def reset_section(
-    section_id: str,
-    payload: Dict[str, Any] = Body(...), # {"session_id": "...", "force": true}
-    current_user: User = Depends(get_current_user)
-) -> Dict[str, Any]:
-    session_id = payload.get("session_id")
-    force = payload.get("force", False)
-    
-    if not current_user.email.endswith("@admin.com") and not force: # Heuristic/Placeholder
-         # Allow users to reset their own for now if force is passed?
-         pass
-
-    try:
-        section_state = InteractiveReportingService.reset_section(
-            session_id=session_id,
-            user_id=current_user.id,
-            section_id=section_id,
-            force=force
-        )
-        return {"section": section_state}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
 @router.post("/finalize")
 async def finalize_report(
     payload: FinalizeRequest,
@@ -153,6 +167,9 @@ async def finalize_report(
         return {"report_state": report_state}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Finalize report failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/export")
 async def export_report(

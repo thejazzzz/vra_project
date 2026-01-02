@@ -126,6 +126,37 @@ class SectionPlanner:
         return sections
 
     @staticmethod
+    def get_template_key(state: Dict[str, Any], section_id: str) -> Optional[str]:
+        """
+        Lightweight lookup for a section's template key without full planning.
+        """
+        # 1. Trend Analysis
+        if section_id == "trend_analysis":
+            return "trend_analysis"
+            
+        # 2. Gap Analysis
+        if section_id == "gap_analysis":
+             return "gap_analysis"
+
+        # 3. Network Analysis
+        if section_id == "network_analysis":
+             return "network_analysis"
+
+        # 4. Limitations
+        if section_id == "limitations":
+             return "limitations"
+             
+        # 5. Executive Summary
+        if section_id == "exec_summary":
+             return "executive_summary"
+             
+        # 6. Appendix
+        if section_id == "appendix":
+             return "deterministic_appendix"
+             
+        return None
+
+    @staticmethod
     def initialize_report_state(state: Dict[str, Any]) -> ReportState:
         """
         Creates the initial ReportState from the plan.
@@ -158,6 +189,8 @@ class SectionPlanner:
         ]
         order_hash = hashlib.sha256(json.dumps(order_signature).encode()).hexdigest()
         
+        utc_now = datetime.datetime.now(datetime.timezone.utc)
+        
         initial_state: ReportState = {
             "report_status": "planned",
             "sections": section_states,
@@ -169,8 +202,8 @@ class SectionPlanner:
             "section_order_hash": order_hash,
             "user_confirmed_start": False, # Requires explicit confirm
             "user_confirmed_finalize": False,
-            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "created_at": utc_now.isoformat(),
+            "updated_at": utc_now.isoformat(),
             "metrics": {
                 "generation_count": 0,
                 "total_revisions": 0

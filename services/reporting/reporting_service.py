@@ -24,35 +24,57 @@ class InteractiveReportingService:
     def initialize_report(session_id: str, user_id: str, confirm: bool = False) -> Dict[str, Any]:
         """
         Initializes the report structure (PLANNING phase).
-        Requires explicit user confirmation.
+        Uses DATABASE LOCKING to prevent race conditions.
         """
         if not confirm:
             raise ValueError("User must explicitly confirm start of report generation.")
 
-        state = load_state_for_query(session_id, user_id)
-        if not state:
-            raise ValueError(f"Session {session_id} not found.")
+        # Use direct DB session for atomic check-and-set
+        from database.db import SessionLocal
+        from database.models.workflow_state_model import WorkflowState
+        from sqlalchemy.orm.attributes import flag_modified
+        import copy
 
-        # If already active, return existing
-        if state.get("report_state") and state["report_state"].get("report_status") != "idle":
-             logger.info(f"Report already active for {session_id}, returning current state.")
-             rep = state["report_state"]
-             if rep.get("user_confirmed_start") and confirm:
-                 # Bug 2 Fix: Guard against accidental re-init if already confirmed
-                 logger.warning(f"Session {session_id} re-initialized but already active.")
-                 # raise ValueError("Report already initialized.") # Optional strictness
-             return rep
+        db = SessionLocal()
+        try:
+            # Select for update to lock the row
+            row = db.query(WorkflowState).filter(
+                WorkflowState.query == session_id,
+                WorkflowState.user_id == user_id
+            ).with_for_update().first()
 
-        # Plan
-        initial_state = SectionPlanner.initialize_report_state(state)
-        initial_state["user_confirmed_start"] = True
-        
-        # Update Main State
-        state["report_state"] = initial_state
-        state["current_step"] = "reporting_planning" # Update workflow step
-        
-        save_state_for_query(session_id, state, user_id)
-        return initial_state
+            if not row or not row.state:
+                raise ValueError(f"Session {session_id} not found.")
+
+            state = copy.deepcopy(row.state)
+            
+            # If already active, return existing
+            if state.get("report_state") and state["report_state"].get("report_status") != "idle":
+                 logger.info(f"Report already active for {session_id}, returning current state.")
+                 rep = state["report_state"]
+                 if rep.get("user_confirmed_start") and confirm:
+                     logger.warning(f"Session {session_id} re-initialized but already active.")
+                 db.commit() # Release lock
+                 return rep
+
+            # Plan
+            initial_state = SectionPlanner.initialize_report_state(state)
+            initial_state["user_confirmed_start"] = True
+            
+            # Update Main State
+            state["report_state"] = initial_state
+            state["current_step"] = "reporting_planning" 
+            
+            # Commit update
+            row.state = state
+            flag_modified(row, "state")
+            db.commit()
+            return initial_state
+        except Exception as e:
+            db.rollback()
+            raise e
+        finally:
+            db.close()
 
     @staticmethod
     def get_report_state(session_id: str, user_id: str) -> Optional[ReportState]:
@@ -61,10 +83,10 @@ class InteractiveReportingService:
         return state.get("report_state")
 
     @staticmethod
-    async def generate_section(session_id: str, user_id: str, section_id: str) -> Dict[str, Any]:
+    def generate_section(session_id: str, user_id: str, section_id: str) -> Dict[str, Any]:
         """
         Generates content for a specific section.
-        Handles locking, dependency checks, and revision limits.
+        Synchronous execution (run in threadpool via FastAPI).
         """
         state = load_state_for_query(session_id, user_id)
         if not state or not state.get("report_state"):
@@ -73,18 +95,12 @@ class InteractiveReportingService:
         rep_state: ReportState = state["report_state"]
         sections = rep_state["sections"]
         
-        # Improvement 2: Deterministic Order Guard
-        # Re-compute hash to ensure sections list wasn't mutated
-        # For performance, we skip re-planning, but we could check IDs match order.
-        # Here we just assume safe if no outside mutators. 
-        
         # 1. Locate Section
         target_section = next((s for s in sections if s["section_id"] == section_id), None)
         if not target_section:
             raise ValueError(f"Section {section_id} not found.")
 
         # 2. Check Locks
-        # Fix Bug 1: Use standardized structure locks["report"]
         if rep_state["locks"].get("report"):
             raise ValueError("Report is locked (finalizing/exporting).")
         
@@ -108,23 +124,20 @@ class InteractiveReportingService:
         rep_state["locks"]["sections"][section_id] = True
         target_section["status"] = "generating"
         
-        # Improvement 1: Status Transition
         if rep_state["report_status"] == "planned":
             rep_state["report_status"] = "in_progress"
 
-        save_state_for_query(session_id, state, user_id) # Commit "Generating" state
+        save_state_for_query(session_id, state, user_id) 
 
         try:
-            # 6. Call Generator
+            # 6. Call Generator (Sync)
             from services.reporting.report_generator import ReportGenerator
             
-            # Bug 5 Fix: Receive metadata dict
             result = ReportGenerator.generate_section_content(section_id, state)
             content = result["content"]
             prompt_version = result.get("prompt_version", "unknown")
             model_name = result.get("model_name", "unknown")
             
-            # Improvement 3: Enforce Markdown Validation
             if not ExportService.validate_markdown(content):
                  raise ValueError("Generated content failed Markdown validation (unsafe HTML or malformed).")
 
@@ -133,7 +146,6 @@ class InteractiveReportingService:
             target_section["revision"] += 1
             target_section["status"] = "review"
             
-            # History
             content_hash = hashlib.sha256(content.encode()).hexdigest()
             history_entry: SectionHistory = {
                 "revision": target_section["revision"],
@@ -146,21 +158,17 @@ class InteractiveReportingService:
             }
             target_section["history"].append(history_entry)
             
-            # Bug 4 Fix: Metrics
             rep_state["metrics"]["generation_count"] += 1
             rep_state["metrics"]["total_revisions"] = rep_state["metrics"].get("total_revisions", 0) + 1
             
-            # Last Success
             rep_state["last_successful_step"] = {"section_id": section_id, "phase": "generated"}
 
         except Exception as e:
             logger.error(f"Generation failed for {section_id}: {e}", exc_info=True)
             target_section["status"] = "error"
-            # Fix Issue 2: Set global failure status
             rep_state["report_status"] = "failed"
             raise e
         finally:
-            # Release Lock
             rep_state["locks"]["sections"][section_id] = False
             save_state_for_query(session_id, state, user_id)
 
@@ -175,30 +183,44 @@ class InteractiveReportingService:
         target_section = next((s for s in rep_state["sections"] if s["section_id"] == section_id), None)
         if not target_section: raise ValueError("Section not found")
 
+        # Guard: Check status is review
+        if target_section["status"] != "review":
+             # We might allow 'error' to be reviewed if content exists? 
+             # Or if user is retrying review. But typically submit_review means approving generated content.
+             # Strict:
+             logger.warning(f"Attempted to review section {section_id} in status {target_section['status']}")
+             # raise ValueError(f"Section {section_id} is not in review status (current: {target_section['status']})") 
+             # Allow idempotency if already accepted?
+             if target_section["status"] == "accepted" and accepted:
+                 return target_section
+             if target_section["status"] == "planned" and not accepted:
+                 return target_section
+             
+             # If status is generating or error, maybe block?
+             if target_section["status"] == "generating":
+                 raise ValueError("Cannot review while generating.")
+             # If error, reject the review attempt - user should reset section first
+             if target_section["status"] == "error":
+                 raise ValueError("Cannot review section in error state. Please reset the section first.")        
+
         if accepted:
             target_section["status"] = "accepted"
-            # Lock content implicitly? Yes.
             rep_state["last_successful_step"] = {"section_id": section_id, "phase": "accepted"}
             
-            # Improvement 1: Check if all accepted
             if all(s["status"] == "accepted" for s in rep_state["sections"]):
                 rep_state["report_status"] = "awaiting_final_review"
 
         else:
-            # Bug 3 Fix: Handle rejection logic safely
             if target_section["revision"] >= target_section["max_revisions"]:
                  target_section["status"] = "error"
                  save_state_for_query(session_id, state, user_id)
                  raise ValueError(f"Max revisions ({target_section['max_revisions']}) reached for section {section_id}. Please edit manually or reset.")
             
-            # If rejected, we allow regen (if below limits)
-            target_section["status"] = "planned" # Ready for regen
+            target_section["status"] = "planned" 
             
-            # Log feedback in history of CURRENT revision (the one being rejected)
             if target_section["history"]:
                 target_section["history"][-1]["feedback"] = feedback
             
-            # Improvement 2: Store last feedback on section for UI
             target_section["last_feedback"] = feedback
 
         save_state_for_query(session_id, state, user_id)
@@ -214,29 +236,37 @@ class InteractiveReportingService:
 
         state = load_state_for_query(session_id, user_id)
         if not state: raise ValueError("State not found")
-        
+        if not state.get("report_state"): raise ValueError("Report state not initialized")
+
         rep_state = state["report_state"]
         target_section = next((s for s in rep_state["sections"] if s["section_id"] == section_id), None)
         
-        if target_section:
-            target_section["status"] = "planned"
-            target_section["content"] = None
-            target_section["revision"] = 0
-            target_section["history"] = []
-            target_section["quality_scores"] = None
-            target_section.pop("last_feedback", None) # Clear feedback
+        if not target_section:
+             raise ValueError(f"Section {section_id} not found.")
 
-            # Release locks
-            if rep_state["locks"]["sections"].get(section_id):
-                 rep_state["locks"]["sections"][section_id] = False
-            
-            # If we were failed, maybe we can recover? 
-            if rep_state["report_status"] == "failed":
-                 # Reset to in_progress if other sections are okay
-                 rep_state["report_status"] = "in_progress"
+        target_section["status"] = "planned"
+        target_section["content"] = None
+        target_section["revision"] = 0
+        target_section["history"] = []
+        target_section["quality_scores"] = None
+        target_section.pop("last_feedback", None) 
 
-            save_state_for_query(session_id, state, user_id)
+        # Release locks
+        if rep_state["locks"]["sections"].get(section_id):
+                rep_state["locks"]["sections"][section_id] = False
         
+        # Recover from failed state ONLY if no other sections are failed
+        # and checking if we should be in_progress
+        if rep_state["report_status"] == "failed":
+                other_failed = any(
+                    s["status"] == "error" 
+                    for s in rep_state["sections"] 
+                    if s["section_id"] != section_id
+                )
+                if not other_failed:
+                    rep_state["report_status"] = "in_progress"
+
+        save_state_for_query(session_id, state, user_id)
         return target_section
 
     @staticmethod
@@ -244,6 +274,9 @@ class InteractiveReportingService:
         if not confirm: raise ValueError("Confirmation required.")
 
         state = load_state_for_query(session_id, user_id)
+        if not state or not state.get("report_state"):
+             raise ValueError("Report state not valid or not initialized.")
+
         rep_state = state["report_state"]
 
         # 1. Validation Phase
@@ -255,12 +288,6 @@ class InteractiveReportingService:
              rep_state["report_status"] = "failed"
              save_state_for_query(session_id, state, user_id)
              raise ValueError("Validation Failed: Not all sections are accepted.")
-
-        # Validate Order Hash (Integrity Check)
-        # current_hash = ... (We would recompute here)
-        # if current_hash != rep_state["section_order_hash"]:
-        #      rep_state["report_status"] = "failed"
-        #      raise ValueError("Integrity Error: Section order mutated.")
         
         # 2. Finalizing
         rep_state["locks"]["report"] = True
@@ -269,7 +296,6 @@ class InteractiveReportingService:
         save_state_for_query(session_id, state, user_id)
 
         # Assemble (Virtual)
-        # For now, we just mark completed to allow export
         rep_state["report_status"] = "completed"
         
         save_state_for_query(session_id, state, user_id)

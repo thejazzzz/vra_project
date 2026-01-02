@@ -47,21 +47,22 @@ class ReportGenerator:
         # 1. Build Context
         context = ContextBuilder.build_context(section_id, state)
         
-        # 2. Get Template
-        # We need to look up the template key. The SectionPlanner knows it.
-        # But we don't have the plan object here unless we look at state['report_state'].
-        # Fallback: Re-plan or use lookup. 
-        # Better: use state['report_state'] if available, else re-plan (hybrid).
-        
+        # 2. Get Template (Optimized)
         template_key = None
+        
+        # A. Check Cached Plan
         if state.get("report_state"):
-             # Fast lookup from existing plan
-             sections = state["report_state"]["sections"]
+             sections = state["report_state"].get("sections", [])
              sec = next((s for s in sections if s["section_id"] == section_id), None)
              if sec: template_key = sec.get("template_key")
         
+        # B. Lightweight Lookup
         if not template_key:
-             # Fallback to planner for legacy/stateless calls
+             template_key = SectionPlanner.get_template_key(state, section_id)
+             
+        # C. Full Re-plan Fallback (and cache if appropriate - strictly we rely on lookup now)
+        if not template_key:
+             # Last resort
              plan = SectionPlanner.plan_report(state)
              sec = next((s for s in plan if s.section_id == section_id), None)
              if sec: template_key = sec.template_key
@@ -76,18 +77,29 @@ class ReportGenerator:
         # 3. Format Prompt
         prompt = template.format(**context)
         
-        # 4. Resolve Provider
-        report_provider_env = os.getenv("REPORT_PROVIDER", "local").lower()
-        provider = LLMProvider.OPENROUTER
+        # 4. Resolve Provider and Model
+        report_provider_env = os.getenv("REPORT_PROVIDER", "").lower()
+        
+        provider = None
+        model_name = None
+        
+        # Explicit Resolution
         if report_provider_env == "local":
             provider = LLMProvider.LOCAL
+            model_name = os.getenv("LOCAL_MODEL", "llama3")
         elif report_provider_env == "openai":
             provider = LLMProvider.OPENAI
+            model_name = os.getenv("OPENAI_MODEL", "gpt-4o")
         elif report_provider_env == "azure":
             provider = LLMProvider.AZURE
+            model_name = os.getenv("AZURE_DEPLOYMENT_NAME", "azure-gpt-4")
+        else:
+            # Default to OPENROUTER for "openrouter", empty, unset, or unknown values
+            provider = LLMProvider.OPENROUTER
+            model_name = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
 
         # 5. Generate
-        logger.info(f"Generating section {section_id} with {provider}...")
+        logger.info(f"Generating section {section_id} with {provider} ({model_name})...")
         content = generate_response(
             prompt=prompt,
             system_prompt=SYSTEM_PROMPT,
@@ -102,11 +114,8 @@ class ReportGenerator:
         
         return {
             "content": content,
-            # Assuming PROMPT_TEMPLATES are objects with .version, or we mock it for now since they are currently Dicts/Strings
-            # PROMPT_TEMPLATES is likely a dict of PromptTemplate objects or strings.
-            # Checking prompts.py would confirm. For now assuming string or dict.
             "prompt_version": getattr(template, "version", "v1.0"), 
-            "model_name": f"{provider.value}" # Simplified model name logic
+            "model_name": model_name
         }
 
     def generate_report(self, state: Dict[str, Any]) -> str:
