@@ -24,7 +24,8 @@ from api.routers import (
     reporting,
     graphs,
     graph_viewer,
-    auth, # [NEW]
+    auth,
+    upload, # [NEW]
 )
 from api.middleware.rate_limit import RateLimitMiddleware
 
@@ -95,7 +96,8 @@ app.include_router(analysis.router, prefix="/analysis", tags=["Analysis Agent"])
 app.include_router(reporting.router, prefix="/reporting", tags=["Reporting Agent"])
 app.include_router(graphs.router, prefix="/graphs", tags=["Graphs"])
 app.include_router(graph_viewer.router, prefix="/graph-viewer", tags=["Graph Viewer"])
-app.include_router(auth.router, tags=["Authentication"]) # [NEW]
+app.include_router(auth.router, tags=["Authentication"]) 
+app.include_router(upload.router, prefix="/upload", tags=["Upload"]) # [NEW]
 
 
 @app.get("/")

@@ -162,9 +162,27 @@ export interface AddPaperPayload {
     [key: string]: any;
 }
 
+export interface LocalPaper {
+    paper_id: string; // The backend returns an int ID, but handling as string is often safer in JS, though we'll match backend.
+    canonical_id: string;
+    title: string;
+    source: string;
+    included: boolean; // Frontend state
+}
+
+export interface UploadPaperResponse {
+    success: boolean;
+    paper_id: string | number;
+    canonical_id: string;
+    title: string;
+    source: string;
+    error?: string;
+}
+
 export interface PlanRequest {
     query: string;
     audience?: string;
+    include_paper_ids?: string[];
 }
 
 export interface BackendResearchState {

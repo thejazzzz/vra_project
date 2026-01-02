@@ -1,10 +1,11 @@
 # File: api/models/research_models.py
-from pydantic import BaseModel
-from typing import Any, Dict, Literal
+from pydantic import BaseModel, Field
+from typing import Any, Dict, Literal, List, Optional
 
 class ResearchRequest(BaseModel):
     query: str
     audience: Literal["general", "phd", "industry"] = "general"
+    include_paper_ids: list[str] = Field(default_factory=list)
 
 
 class ResearchResponse(BaseModel):

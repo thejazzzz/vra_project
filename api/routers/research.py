@@ -22,7 +22,7 @@ async def research_endpoint(
     try:
         # Note: This endpoint seems to be a direct tool access. 
         # Ideally should be wrapped in a session but we'll secure access at least.
-        result = await process_research_task(payload.query)
+        result = await process_research_task(payload.query, include_paper_ids=payload.include_paper_ids)
 
         # If pipeline failed internally
         if not result.get("success", False):

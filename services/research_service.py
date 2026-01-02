@@ -21,6 +21,22 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------
 # PDF DOWNLOAD + EXTRACTION
 # ------------------------------------------------------------
+# ------------------------------------------------------------
+# PDF DOWNLOAD + EXTRACTION
+# ------------------------------------------------------------
+def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
+    """
+    Extracts text from PDF bytes using PyMuPDF (fitz).
+    """
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        text = "\n".join(page.get_text("text") for page in doc)
+        doc.close()
+        return clean_text(text)
+    except Exception as e:
+        logger.warning(f"PDF extraction error: {e}")
+        return ""
+
 async def download_pdf(pdf_url: Optional[str]) -> str:
     if not pdf_url:
         return ""
@@ -38,27 +54,18 @@ async def download_pdf(pdf_url: Optional[str]) -> str:
         logger.warning(f"PDF request failed for {pdf_url}: {e}")
         return ""
 
-    def extract():
-        try:
-            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-            text = "\n".join(page.get_text("text") for page in doc)
-            doc.close()
-            return clean_text(text)
-        except Exception as e:
-            logger.warning(f"PDF extraction error: {e}")
-            return ""
-
-    return await asyncio.to_thread(extract)
+    return await asyncio.to_thread(extract_text_from_pdf_bytes, pdf_bytes)
 
 
 # ------------------------------------------------------------
 # MAIN PIPELINE
 # ------------------------------------------------------------
-async def process_research_task(query: str) -> Dict:
+async def process_research_task(query: str, include_paper_ids: List[str] = []) -> Dict:
     """
     PIPELINE:
-    1. Multi-source acquisition
-    2. Deduplication (handled upstream)
+    0. Fetch explicitly included local papers
+    1. Multi-source acquisition (External)
+    2. Deduplication (External vs External)
     3. PDF extraction
     4. DB upsert (merged metadata + hash dedupe)
     5. Vector embeddings (Chroma)
@@ -72,9 +79,38 @@ async def process_research_task(query: str) -> Dict:
 
     try:
         # --------------------------------------------
+        # 0. Load Included Papers (Local)
+        # --------------------------------------------
+        included_papers = []
+        if include_paper_ids:
+            logger.info(f"Including {len(include_paper_ids)} local papers")
+            # Fetch from DB
+            local_papers_db = db.query(Paper).filter(Paper.id.in_(include_paper_ids)).all()
+            
+            for lp in local_papers_db:
+                # Convert to dict format expected by pipeline
+                lp_dict = {
+                    "canonical_id": lp.canonical_id,
+                    "id": lp.paper_id,
+                    "title": lp.title,
+                    "summary": lp.abstract, # Treat abstract as summary
+                    "pdf_url": None, # Local file, no download needed
+                    "source": lp.paper_metadata.get("source", "local_file"),
+                    "sources": ["local_file"],
+                    "year": lp.published_year or 2024,
+                    "authors": lp.paper_metadata.get("authors", []),
+                    "metadata": lp.paper_metadata,
+                    "_is_local": True # Marker to skip download
+                }
+                included_papers.append(lp_dict)
+
+        # --------------------------------------------
         # 1. Fetch merged papers
         # --------------------------------------------
-        papers = await data_acquisition_agent.run(query, limit=20)
+        external_papers = await data_acquisition_agent.run(query, limit=20)
+        
+        # Combine (Local papers first to ensure they aren't lost)
+        papers = included_papers + external_papers
 
         if not papers:
             return {
@@ -92,7 +128,21 @@ async def process_research_task(query: str) -> Dict:
         # --------------------------------------------
         # 2. PDF extraction async
         # --------------------------------------------
-        pdf_tasks = [download_pdf(p.get("pdf_url")) for p in papers]
+        # For local papers, we might already have full text in DB, but extracting again is hard without file.
+        # Actually, if _is_local is True, we skip download.
+        
+        pdf_tasks = []
+        for p in papers:
+            if p.get("_is_local"):
+                # No download needed, text is already in DB or we assume abstract is enough?
+                # The pipeline expects `pdf_texts` to align with `papers`.
+                # If it's local, we might want to fetch raw_text from DB if available.
+                # However, for simplicity here, we append empty string as `download_pdf` returns for failure,
+                # BUT we handle the text injection in step 3.
+                pdf_tasks.append(asyncio.to_thread(lambda: "")) 
+            else:
+                pdf_tasks.append(download_pdf(p.get("pdf_url")))
+
         pdf_texts = await asyncio.gather(*pdf_tasks)
 
         vector_client = get_client()
@@ -100,7 +150,20 @@ async def process_research_task(query: str) -> Dict:
         # --------------------------------------------
         # 3. DB UPSERT (NO COMMIT INSIDE LOOP)
         # --------------------------------------------
-        for paper, fulltext in zip(papers, pdf_texts):
+        # --------------------------------------------
+        # 3. DB UPSERT (NO COMMIT INSIDE LOOP)
+        # --------------------------------------------
+        for paper, downloaded_text in zip(papers, pdf_texts):
+            
+            # If local, use existing text if available (though we didn't fetch it above to save RAM)
+            # Actually, `ingest_local_file` already put text in DB. 
+            # We just need to ensure `fulltext` is correct.
+            fulltext = downloaded_text
+            
+            # If it was local, we skip updating raw_text unless we want to overwrite.
+            # But the pipeline logic below appends text.
+            # Let's ensure we don't duplicate work for local files.
+            is_local = paper.get("_is_local", False)
 
             title = clean_text(paper.get("title", "Untitled"))
             abstract = clean_text(paper.get("summary", ""))
@@ -140,7 +203,8 @@ async def process_research_task(query: str) -> Dict:
                         existing.abstract = abstract
 
                     # -------- HASH-BASED DEDUPLICATION --------
-                    if fulltext:
+                    # Use provided text (downloaded) OR skip if local (trusting existing)
+                    if fulltext and not is_local:
                         content_hash = hashlib.md5(fulltext.encode()).hexdigest()
                         existing_hashes = existing.paper_metadata.get("pdf_hashes", [])
 
@@ -157,7 +221,7 @@ async def process_research_task(query: str) -> Dict:
                 # =====================================================
                 else:
                     hashes = []
-                    if fulltext:
+                    if fulltext and not is_local:
                         hashes.append(hashlib.md5(fulltext.encode()).hexdigest())
 
                     db_obj = Paper(
@@ -255,6 +319,97 @@ async def process_research_task(query: str) -> Dict:
         ],
         "error": error_message,
     }
+
+
+async def ingest_local_file(
+    file_bytes: bytes,
+    filename: str,
+    user_id: str
+) -> Dict:
+    """
+    Ingests a local PDF file: extracts text, stores in DB, embeds in Chroma.
+    """
+    logger.info(f"📂 Ingesting local file: {filename}")
+    db = SessionLocal()
+    try:
+        # 1. Extract Text
+        text = extract_text_from_pdf_bytes(file_bytes)
+        if not is_nonempty_text(text):
+             return {"success": False, "error": "Failed to extract text from PDF or empty file."}
+
+        # 2. Generate Metadata
+        # Use filename as title (remove extension)
+        title = filename.rsplit(".", 1)[0].replace("_", " ").title()
+        
+        # Calculate Hash for Dedup
+        content_hash = hashlib.sha256(text.encode()).hexdigest()
+        
+        # Canonical ID: "local_file:<hash>" to be robust
+        canonical_id = f"local_file:{content_hash[:16]}"
+        
+        # 3. DB Upsert
+        existing = db.query(Paper).filter(Paper.canonical_id == canonical_id).one_or_none()
+        
+        if existing:
+            db_obj = existing
+            # Update title if it looks like a better one? No, keep existing.
+            logger.info(f"Local file dedup hit: {canonical_id}")
+        else:
+            db_obj = Paper(
+                canonical_id=canonical_id,
+                paper_id=f"local_{content_hash[:8]}", # Legacy ID
+                title=title,
+                abstract=text[:3000], # First 3000 chars as abstract fallback
+                raw_text=text,
+                published_year=2024, # Fallback
+                paper_metadata={
+                    "source": "local_file",
+                    "user_uploaded": True,
+                    "filename": filename,
+                    "authors": ["User Upload"],
+                    "pdf_hashes": [hashlib.md5(text.encode()).hexdigest()]
+                }
+            )
+            db.add(db_obj)
+            
+        db.commit()
+        db.refresh(db_obj)
+        
+        # 4. Embed in Chroma
+        vector_client = get_client()
+        chroma_id = f"paper-{db_obj.id}"
+        
+        # Use extract_text_from_pdf_bytes result (full text)
+        # But Chroma might have limits? We usually chunk or store summary.
+        # Existing logic stores `db_obj.abstract`.
+        # Here we stored first 3000 chars as abstract. That's fine for now.
+        # Ideally we should chunk the full text, but RAG expects `db_obj.abstract` usually?
+        # Let's align with `add_manual_paper`: store abstract.
+        
+        vector_client.store(
+            chroma_id,
+            db_obj.abstract,
+            {
+                "paper_db_id": db_obj.id, 
+                "canonical_id": db_obj.canonical_id,
+                "source": "local_file",
+                "user_uploaded": True
+            }
+        )
+        
+        return {
+            "success": True,
+            "paper_id": db_obj.id,
+            "canonical_id": db_obj.canonical_id,
+            "title": db_obj.title,
+            "source": "local_file"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to ingest local file {filename}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
 
 
 async def add_manual_paper(

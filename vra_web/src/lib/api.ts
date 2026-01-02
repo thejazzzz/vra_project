@@ -122,9 +122,12 @@ export const authApi = {
 };
 
 export const plannerApi = {
-    plan: (query: string): Promise<PlanResponse> =>
+    plan: (
+        query: string,
+        include_paper_ids: string[] = []
+    ): Promise<PlanResponse> =>
         api
-            .post<PlanResponse>("/planner/plan", { query })
+            .post<PlanResponse>("/planner/plan", { query, include_paper_ids })
             .then((res) => res.data),
 
     status: (query: string): Promise<StatusResponse> =>
@@ -182,6 +185,20 @@ export const graphApi = {
                 metadata: { canonical_id: string };
             }>;
         }>(`/graph-viewer/context/${encodeURIComponent(concept)}`),
+};
+
+export const uploadApi = {
+    uploadPaper: (file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        return api
+            .post("/upload/", formData, {
+                headers: {
+                    "Content-Type": "multipart/form-data",
+                },
+            })
+            .then((res) => res.data);
+    },
 };
 
 export default api;

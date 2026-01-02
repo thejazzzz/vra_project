@@ -16,6 +16,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { plannerApi } from "@/lib/api";
 import { Loader2, Plus } from "lucide-react";
+import { LocalPaperUpload } from "./local-paper-upload";
+import { LocalPaperList } from "./local-paper-list";
+import { LocalPaper, UploadPaperResponse } from "@/types";
 
 export function NewResearchDialog({
     children,
@@ -26,6 +29,7 @@ export function NewResearchDialog({
     const [query, setQuery] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [localPapers, setLocalPapers] = useState<LocalPaper[]>([]);
     const router = useRouter();
 
     const handleStart = async (e: React.FormEvent) => {
@@ -35,7 +39,12 @@ export function NewResearchDialog({
         setLoading(true);
         setError(null);
         try {
-            const response = await plannerApi.plan(query);
+            // Collect included paper IDs
+            const includeIds = localPapers
+                .filter((p) => p.included)
+                .map((p) => String(p.paper_id));
+
+            const response = await plannerApi.plan(query, includeIds);
             // Redirect to the new research session
             if (response.session_id) {
                 setOpen(false); // Only close on success
@@ -53,6 +62,31 @@ export function NewResearchDialog({
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleUploadSuccess = (paper: UploadPaperResponse) => {
+        setLocalPapers((prev) => [
+            ...prev,
+            {
+                paper_id: String(paper.paper_id), // Ensure string
+                canonical_id: paper.canonical_id,
+                title: paper.title,
+                source: paper.source,
+                included: true,
+            },
+        ]);
+    };
+
+    const handleTogglePaper = (id: string, checked: boolean) => {
+        setLocalPapers((prev) =>
+            prev.map((p) =>
+                p.canonical_id === id ? { ...p, included: checked } : p
+            )
+        );
+    };
+
+    const handleRemovePaper = (id: string) => {
+        setLocalPapers((prev) => prev.filter((p) => p.canonical_id !== id));
     };
 
     return (
@@ -91,6 +125,22 @@ export function NewResearchDialog({
                                 className="col-span-3"
                                 autoFocus
                             />
+                        </div>
+
+                        <div className="grid grid-cols-4 items-start gap-4">
+                            <Label className="text-right pt-2">
+                                Local Docs
+                            </Label>
+                            <div className="col-span-3">
+                                <LocalPaperUpload
+                                    onUploadSuccess={handleUploadSuccess}
+                                />
+                                <LocalPaperList
+                                    papers={localPapers}
+                                    onToggle={handleTogglePaper}
+                                    onRemove={handleRemovePaper}
+                                />
+                            </div>
                         </div>
                     </div>
                     <DialogFooter>
