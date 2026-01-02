@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { plannerApi } from "@/lib/api";
 import { Loader2, Plus } from "lucide-react";
+import { AudienceSelector } from "./audience-selector";
 import { LocalPaperUpload } from "./local-paper-upload";
 import { LocalPaperList } from "./local-paper-list";
 import { LocalPaper, UploadPaperResponse } from "@/types";
@@ -27,6 +28,7 @@ export function NewResearchDialog({
 }) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
+    const [audience, setAudience] = useState("general");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [localPapers, setLocalPapers] = useState<LocalPaper[]>([]);
@@ -44,7 +46,7 @@ export function NewResearchDialog({
                 .filter((p) => p.included)
                 .map((p) => String(p.paper_id));
 
-            const response = await plannerApi.plan(query, includeIds);
+            const response = await plannerApi.plan(query, includeIds, audience);
             // Redirect to the new research session
             if (response.session_id) {
                 setOpen(false); // Only close on success
@@ -126,6 +128,11 @@ export function NewResearchDialog({
                                 autoFocus
                             />
                         </div>
+
+                        <AudienceSelector
+                            audience={audience}
+                            setAudience={setAudience}
+                        />
 
                         <div className="grid grid-cols-4 items-start gap-4">
                             <Label className="text-right pt-2">

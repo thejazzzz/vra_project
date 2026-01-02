@@ -7,6 +7,7 @@ import { useReactToPrint } from "react-to-print";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Printer, Download, FileText } from "lucide-react";
+import { AudienceBadge } from "@/components/audience-badge";
 
 export default function ReportPage({
     params,
@@ -14,7 +15,7 @@ export default function ReportPage({
     params: Promise<{ id: string }>;
 }) {
     const resolvedParams = use(params);
-    const { draftReport, query } = useResearchStore();
+    const { draftReport, query, audience } = useResearchStore();
     const printRef = useRef<HTMLDivElement>(null);
     const queryId = decodeURIComponent(resolvedParams.id);
 
@@ -44,8 +45,9 @@ export default function ReportPage({
                     <h2 className="text-2xl font-bold tracking-tight">
                         Research Report
                     </h2>
-                    <p className="text-muted-foreground">
+                    <p className="text-muted-foreground flex items-center gap-2">
                         Synthesized findings and strategic insights.
+                        {audience && <AudienceBadge audience={audience} />}
                     </p>
                 </div>
                 <div className="flex gap-2">

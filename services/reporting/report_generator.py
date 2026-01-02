@@ -50,6 +50,8 @@ class ReportGenerator:
             try:
                 # Build Content
                 context = ContextBuilder.build_context(section.section_id, state)
+                audience_log = context.get("audience", "unknown")
+                logger.info(f"[REPORT] Section={section.section_id} Audience={audience_log}")
                 template = PROMPT_TEMPLATES.get(section.template_key)
                 
                 if not template:

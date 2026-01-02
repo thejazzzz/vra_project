@@ -11,8 +11,82 @@ class ContextBuilder:
     """
 
     @staticmethod
+    def get_tone(audience: str) -> str:
+        return {
+            "phd": "formal, technical, citation-heavy, academic",
+            "rd": "technical, pragmatic, implementation-focused, engineering-centric",
+            "industry": "strategic, concise, business-oriented, ROI-focused",
+            "general": "neutral, informative, accessible"
+        }.get(audience, "neutral, informative")
+
+    @staticmethod
+    def get_depth(audience: str) -> str:
+        return {
+            "phd": "comprehensive, theoretical, methodological deep-dive",
+            "rd": "architectural, system-design focused, feasibility-oriented",
+            "industry": "high-level, executive summary style, key takeaways",
+            "general": "overview, balanced"
+        }.get(audience, "balanced")
+
+    @staticmethod
+    def get_focus(audience: str) -> str:
+        return {
+            "phd": "novelty, limitations, future work, validity",
+            "rd": "scalability, performance, integration, tech stack",
+            "industry": "market impact, risks, opportunities, cost-benefit",
+            "general": "main concepts, general trends"
+        }.get(audience, "general trends")
+
+    @staticmethod
+    def get_section_constraints(section_id: str, audience: str) -> str:
+        """
+        Returns hard formatting/content constraints based on audience and section.
+        """
+        constraints = []
+        
+        if section_id == "gap_analysis":
+            if audience == "industry":
+                constraints = [
+                    "- Limit to 5 high-impact opportunities.",
+                    "- Each point MUST mention business impact, ROI, or competitive advantage.",
+                    "- Avoid theoretical gaps; focus on applied opportunities."
+                ]
+            elif audience == "phd":
+                constraints = [
+                    "- Focus on theoretical and methodological gaps.",
+                    "- Relate gaps to specific limitations in cited papers.",
+                    "- Propose formal future research directions."
+                ]
+            elif audience == "rd":
+                constraints = [
+                    "- Focus on implementation challenges and system bottlenecks.",
+                    "- Propose architectural or engineering improvements.",
+                    "- Assess feasibility of closing these gaps."
+                ]
+        elif section_id == "exec_summary":
+             if audience == "industry":
+                constraints.append("- MUST end with a 'Strategic Recommendation' sentence.")
+             elif audience == "phd":
+                constraints.append("- MUST end with a 'Contribution to Field' statement.")
+
+        return "\n".join(constraints) if constraints else "None."
+
+    @staticmethod
     def build_context(section_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
         
+        # Audience Logic
+        audience = state.get("audience", "industry")
+        if "audience" not in state:
+             logger.warning("Audience missing from state in ContextBuilder, defaulting to 'industry'")
+
+        base_context = {
+            "audience": audience,
+            "tone": ContextBuilder.get_tone(audience),
+            "depth": ContextBuilder.get_depth(audience),
+            "focus": ContextBuilder.get_focus(audience),
+            "constraints": ContextBuilder.get_section_constraints(section_id, audience)
+        }
+
         # Common Metadata
         query = state.get("query", "Unknown Topic")
         
@@ -28,6 +102,7 @@ class ContextBuilder:
                 gap_summary += f" Top gap: {gaps[0].get('description')}"
 
             return {
+                **base_context,
                 "query": query,
                 "trend_summary": trend_summary,
                 "gap_summary": gap_summary
@@ -44,6 +119,7 @@ class ContextBuilder:
                     f"Growth: {data.get('growth_rate')} | Stability: {data.get('stability')}"
                 )
             return {
+                **base_context,
                 "query": query,
                 "trends_table": "\n".join(lines)
             }
@@ -59,6 +135,7 @@ class ContextBuilder:
                     f"Confidence: {g.get('confidence')}"
                 )
             return {
+                **base_context,
                 "query": query,
                 "gaps_list": "\n".join(lines)
             }
@@ -73,6 +150,7 @@ class ContextBuilder:
             
             
             return {
+                **base_context,
                 "query": query,
                 "author_stats": ", ".join(authors),
                 "diversity_index": ag.get("meta", {}).get("diversity_index", "N/A")
@@ -91,6 +169,7 @@ class ContextBuilder:
             papers = state.get("selected_papers", [])
             
             return {
+                **base_context,
                 "provenance_stats": f"Papers: {len(papers)}. Edges: {meta.get('edges_present', 0)}",
                 "data_warnings": "\n".join(warnings)
                 if warnings else "None."

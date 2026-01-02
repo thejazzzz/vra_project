@@ -98,7 +98,7 @@ async def plan_task(payload: ResearchRequest, current_user: User = Depends(get_c
             citation_graph={},
             current_step=None,
             user_feedback=None,
-            audience="general",
+            audience="industry",
         )
     
     # Create persistent session in DB
@@ -135,7 +135,7 @@ async def plan_task(payload: ResearchRequest, current_user: User = Depends(get_c
         state["collected_papers"] = papers
         state["selected_papers"] = deepcopy(papers)
         state["current_step"] = "awaiting_research_review"
-        state["audience"] = payload.audience or "general"
+        state["audience"] = payload.audience or "industry"
         save_state_for_query(session_id, state, user_id)
         return {"state": state, "session_id": session_id}
 
@@ -165,7 +165,10 @@ async def continue_workflow(
     if not session or session.user_id != user_id:
         raise HTTPException(403, "Forbidden: session does not belong to user")
 
-    state = _load_or_create_state(session_id, user_id)
+    state = load_state_for_query(session_id, user_id)
+    if not state:
+         raise HTTPException(404, "State not found")
+
     state["user_id"] = user_id # Ensure user_id is present for legacy states
 
     if not state.get("collected_papers"):
@@ -195,7 +198,7 @@ async def continue_workflow(
 class PaperReviewRequest(BaseModel):
     query: str
     selected_paper_ids: list[str]
-    audience: str = "general"
+    audience: str = "industry"
 
 
 @router.post("/review")
@@ -215,7 +218,10 @@ async def review_papers(
     if session.user_id != user_id:
         raise HTTPException(403, "Forbidden: session does not belong to user")
 
-    state = _load_or_create_state(session_id, user_id)
+    state = load_state_for_query(session_id, user_id)
+    if not state:
+         raise HTTPException(404, "State not found")
+         
     state["user_id"] = user_id # Ensure user_id is set
 
     if not state.get("collected_papers"):
@@ -233,7 +239,7 @@ async def review_papers(
         raise HTTPException(400, "No papers selected. Cannot proceed.")
 
     state["selected_papers"] = final_selection
-    state["audience"] = payload.audience
+    state["audience"] = payload.audience or "industry"
 
     # Trigger next step: Analysis
     # We manually set the transition here because this IS the user interaction
@@ -285,10 +291,14 @@ async def review_graph(
     user_id = current_user.id
     
     # Ownership Check
-    state = _load_or_create_state(session_id, user_id)
+    state = load_state_for_query(session_id, user_id)
+    # If state not found, we fail. We DO NOT create new state here.
+    if not state:
+         logger.error(f"State not found for session_id={session_id} user_id={user_id}")
+         raise HTTPException(404, "State not found")
+
     state["user_id"] = user_id # Ensure user_id is set
-    # User requested verifying state ownership ID too, but let's stick to DB check first? 
-    # Actually, let's check the state loading.
+    # User requested verifying state ownership ID too, but let's stick to DB check first?
     
     # Check DB ownership explicitly as well or relying on state loading by user_id?
     # services/state_service.py filters by user_id. So if it loads, it's owned.

@@ -1,10 +1,10 @@
 # File: state/state_schema.py
-from typing import TypedDict, List, Optional, Dict, Any
+from typing import TypedDict, List, Optional, Dict, Any, Literal
 
 class VRAState(TypedDict, total=False):
     query: str
     user_id: str
-    audience: str
+    audience: Literal["phd", "rd", "industry", "general"]
 
 
 

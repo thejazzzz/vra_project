@@ -4,6 +4,7 @@ import { useEffect, use } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { useResearchStore } from "@/lib/store";
 import { Loader2 } from "lucide-react";
+import { AudienceBadge } from "@/components/audience-badge";
 
 export default function ResearchLayout({
     children,
@@ -13,7 +14,8 @@ export default function ResearchLayout({
     params: Promise<{ id: string }>;
 }) {
     const resolvedParams = use(params);
-    const { syncState, isLoading, currentStep, query } = useResearchStore();
+    const { syncState, isLoading, currentStep, query, audience } =
+        useResearchStore();
     const queryId = decodeURIComponent(resolvedParams.id);
 
     useEffect(() => {
@@ -46,6 +48,7 @@ export default function ResearchLayout({
                                 {currentStep?.replace(/_/g, " ") ||
                                     "Initializing"}
                             </span>
+                            {audience && <AudienceBadge audience={audience} />}
                         </div>
                     </div>
 

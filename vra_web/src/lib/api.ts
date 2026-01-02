@@ -124,10 +124,15 @@ export const authApi = {
 export const plannerApi = {
     plan: (
         query: string,
-        include_paper_ids: string[] = []
+        include_paper_ids: string[] = [],
+        audience: string = "industry"
     ): Promise<PlanResponse> =>
         api
-            .post<PlanResponse>("/planner/plan", { query, include_paper_ids })
+            .post<PlanResponse>("/planner/plan", {
+                query,
+                include_paper_ids,
+                audience,
+            })
             .then((res) => res.data),
 
     status: (query: string): Promise<StatusResponse> =>

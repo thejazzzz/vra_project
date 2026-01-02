@@ -7,12 +7,18 @@ PROMPT_TEMPLATES: Dict[str, str] = {
     "executive_summary": """
 Role: Scientific Editor
 Task: Write an Executive Summary for a research report.
+Audience: {audience}
+
 Context:
 Query: {query}
 Top Trends: {trend_summary}
 Identified Gaps: {gap_summary}
 
 Requirements:
+- Tone: {tone}
+- Depth: {depth}
+- Focus: {focus}
+- Constraints: {constraints}
 - Length: 2-3 paragraphs.
 - Focus on the high-level landscape.
 - Do NOT cite specific papers unless crucial.
@@ -22,12 +28,18 @@ Requirements:
     "trend_analysis": """
 Role: Data Analyst
 Task: Analyze research trends based on the provided table.
+Audience: {audience}
+
 Context:
 Query: {query}
 Data:
 {trends_table}
 
 Requirements:
+- Tone: {tone}
+- Depth: {depth}
+- Focus: {focus}
+- Constraints: {constraints}
 - For each ACTIVE trend, describe its status and growth.
 - Clearly distinguish between "Emerging", "Saturated", and "Declining" topics.
 - Mention stability/volatility.
@@ -38,12 +50,18 @@ Requirements:
     "gap_analysis": """
 Role: Strategic Researcher
 Task: Describe research gaps and opportunities.
+Audience: {audience}
+
 Context:
 Query: {query}
 Gaps Identified:
 {gaps_list}
 
 Requirements:
+- Tone: {tone}
+- Depth: {depth}
+- Focus: {focus}
+- Constraints: {constraints}
 - Use "We identified..." or "Analysis suggests..." language.
 - For high-confidence gaps (>0.7), use strong language ("Clear opportunity").
 - For low-confidence gaps, use tentative language ("Possible under-explored area").
@@ -54,12 +72,18 @@ Requirements:
     "network_analysis": """
 Role: Network Scientist
 Task: Interpret the collaboration graph.
+Audience: {audience}
+
 Context:
 Query: {query}
 Influential Authors: {author_stats}
 Diversity Index: {diversity_index} (0.0 = Monolithic, 1.0 = Diverse)
 
 Requirements:
+- Tone: {tone}
+- Depth: {depth}
+- Focus: {focus}
+- Constraints: {constraints}
 - Discuss the key players (Influencers).
 - Interpret the Diversity Index (High diversity means varied perspectives; Low means echo chamber or tight-knit group).
 - If Diversity is low, warn about potential bias.

@@ -32,7 +32,8 @@ interface PaperReviewDialogProps {
 }
 
 export function PaperReviewDialog({ query }: PaperReviewDialogProps) {
-    const { papers, submitReview, addPaper, isLoading } = useResearchStore();
+    const { papers, submitReview, addPaper, isLoading, audience } =
+        useResearchStore();
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState("review");
@@ -64,7 +65,7 @@ export function PaperReviewDialog({ query }: PaperReviewDialogProps) {
             await submitReview({
                 query,
                 selected_paper_ids: selectedIds,
-                audience: "general",
+                audience: audience || "general", // Use actual audience
             });
             setIsOpen(false);
         } catch (error) {
