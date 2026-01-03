@@ -3,8 +3,7 @@ import logging
 import os
 from typing import Dict, Any
 
-# Import the new Generator
-from services.reporting.report_generator import ReportGenerator
+from services.reporting.section_planner import SectionPlanner
 
 logger = logging.getLogger(__name__)
 
@@ -16,22 +15,26 @@ class ReportingAgent:
     """
 
     def __init__(self):
-        self.generator = ReportGenerator()
+        pass
 
     def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        logger.info("✍️ Reporting Agent: Generating final report (Phase 3 Arch)...")
+        logger.info("✍️ Reporting Agent: Planning report structure (Phase 3 Interactive)...")
 
         try:
-            # The ReportGenerator handles planning, context building, and generation.
-            final_report = self.generator.generate_report(state)
+            # Plan the report (Fast)
+            # We used to generate completely here, but that takes too long (~10 mins).
+            # Now we just initialize the state and let the user drive generation in the dashboard.
+            initial_rep_state = SectionPlanner.initialize_report_state(state)
             
-            state["draft_report"] = final_report
-            state["current_step"] = "awaiting_final_review"
-            logger.info("✅ Report generated successfully (Phase 3).")
+            state["report_state"] = initial_rep_state
+            
+            # Use specific step to signal UI to show "Start Report"
+            state["current_step"] = "awaiting_report_start"
+            logger.info("✅ Report planned successfully. Waiting for user start.")
             
         except Exception as e:
-            logger.error(f"Reporting failed: {e}", exc_info=True)
-            state["error"] = f"Report generation failed: {str(e)}"
+            logger.error(f"Reporting planning failed: {e}", exc_info=True)
+            state["error"] = f"Report planning failed: {str(e)}"
             state["current_step"] = "failed"
         
         return state

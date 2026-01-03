@@ -4,7 +4,7 @@ from typing import Any, Dict, Literal, List, Optional
 
 class ResearchRequest(BaseModel):
     query: str
-    audience: Literal["general", "phd", "industry"] = "general"
+    audience: Literal["general", "phd", "industry", "rd"] = "general"
     include_paper_ids: list[str] = Field(default_factory=list)
 
 

@@ -12,23 +12,18 @@ class ExportService:
     """
 
     @staticmethod
-    def export_report(state: Dict[str, Any], format: str, output_path: Optional[str] = None) -> Union[bytes, str]:
+    def export_report(state: Dict[str, Any], format: str) -> bytes:
         """
-        Exports the report to the specified format.
+        Exports the report to the requested format.
         
         Args:
             state: The full report state dictionary.
             format: Target format ('pdf', 'docx', 'markdown').
-            output_path: Optional file path to write the output to.
 
         Returns:
-            bytes: The binary content if output_path is None.
-            str: The output_path if writing to file was successful.
+            bytes: The binary content of the exported report.
         """
-        # 1. Validate Format
         format = format.lower()
-        if format not in ["pdf", "docx", "markdown"]:
-            raise ValueError(f"Unsupported export format: {format}")
 
         # 2. Generate Content (Stub -> Real Bytes placeholders)
         content_bytes = b""

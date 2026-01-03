@@ -17,7 +17,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:7000";
 
 const api = axios.create({
     baseURL: API_URL,
-    timeout: 120000, // 120 seconds for long research tasks
+    timeout: 300000, // 300 seconds (5 mins) for long research tasks
     headers: {
         "Content-Type": "application/json",
     },
@@ -190,6 +190,98 @@ export const graphApi = {
                 metadata: { canonical_id: string };
             }>;
         }>(`/graph-viewer/context/${encodeURIComponent(concept)}`),
+};
+
+// Phase 3.2: Reporting API
+export const reportingApi = {
+    // Initialize (Start) Report Generation
+    // Backend: POST /init { session_id, confirm }
+    init: (sessionId: string, confirm: boolean = true) =>
+        api
+            .post("/reporting/init", {
+                session_id: sessionId,
+                confirm,
+            })
+            .then((res) => res.data.report_state),
+
+    // Get Report State (Polling)
+    // Backend: GET /state/{session_id}
+    getState: (sessionId: string) =>
+        api
+            .get(`/reporting/state/${encodeURIComponent(sessionId)}`)
+            .then((res) => res.data.report_state),
+
+    // Generate a specific section
+    // Backend: POST /section/{section_id}/generate { session_id }
+    generateSection: (sessionId: string, sectionId: string) =>
+        api
+            .post(
+                `/reporting/section/${encodeURIComponent(sectionId)}/generate`,
+                {
+                    session_id: sessionId,
+                }
+            )
+            .then((res) => res.data.section),
+
+    // Submit Review (Accept/Reject/Feedback)
+    // Backend: POST /section/{section_id}/review { session_id, accepted, feedback }
+    submitReview: (
+        sessionId: string,
+        sectionId: string,
+        payload: {
+            accepted: boolean;
+            feedback?: string;
+        }
+    ) =>
+        api
+            .post(
+                `/reporting/section/${encodeURIComponent(sectionId)}/review`,
+                {
+                    session_id: sessionId,
+                    ...payload,
+                }
+            )
+            .then((res) => res.data.section),
+
+    // Reset Section (Admin/Force or standard reset if allowed)
+    // Backend: POST /section/{section_id}/reset { session_id, force }
+    resetSection: (
+        sessionId: string,
+        sectionId: string,
+        force: boolean = false
+    ) =>
+        api
+            .post(`/reporting/section/${encodeURIComponent(sectionId)}/reset`, {
+                session_id: sessionId,
+                force,
+            })
+            .then((res) => res.data.section),
+
+    // Finalize Report
+    // Backend: POST /finalize { session_id, confirm }
+    finalize: (sessionId: string) =>
+        api
+            .post("/reporting/finalize", {
+                session_id: sessionId,
+                confirm: true,
+            })
+            .then((res) => res.data.report_state),
+
+    // Export Report (returns Blob/Link)
+    // Backend: POST /export { session_id, format }
+    exportReport: (sessionId: string, format: "pdf" | "docx" | "markdown") =>
+        api
+            .post(
+                "/reporting/export",
+                {
+                    session_id: sessionId,
+                    format,
+                },
+                {
+                    responseType: "blob", // Important for binary downloads
+                }
+            )
+            .then((res) => res.data),
 };
 
 export const uploadApi = {

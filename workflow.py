@@ -29,7 +29,7 @@ async def run_step(state: VRAState) -> VRAState:
             "awaiting_research_review", "awaiting_analysis",
             "awaiting_paper_summaries", "awaiting_graphs", "awaiting_graph_review",
             "awaiting_gap_analysis", "awaiting_hypothesis", "reviewing_hypotheses",
-            "awaiting_report", "awaiting_final_review",
+            "awaiting_report", "awaiting_report_start", "awaiting_final_review",
             "completed", "failed", "error"
         }
         if current not in ALLOWED_STEPS:
@@ -109,7 +109,7 @@ async def run_step(state: VRAState) -> VRAState:
         # STEP 4.6 — HYPOTHESIS GENERATION (Phase 4)
         # ---------------------------------------------------------
         if current == "awaiting_hypothesis":
-            state = await asyncio.to_thread(hypothesis_generation_agent.run, state)
+            state = await hypothesis_generation_agent.run(state)
             state["current_step"] = "reviewing_hypotheses"
             return state
 
@@ -151,10 +151,13 @@ async def run_step(state: VRAState) -> VRAState:
         return state
 
 
-async def run_until_interaction(state: VRAState) -> VRAState:
+from typing import Callable, Awaitable
+
+async def run_until_interaction(state: VRAState, save_callback: Callable[[VRAState], Awaitable[None]] = None) -> VRAState:
     """
     Executes workflow steps continuously until it reaches a state requiring user interaction
     (e.g., 'awaiting_graph_review') or a terminal state.
+    Optionally calls save_callback(state) after each step to checkpoint progress.
     """
     max_steps = 10
     steps_run = 0
@@ -167,6 +170,7 @@ async def run_until_interaction(state: VRAState) -> VRAState:
         if step in [
             "awaiting_research_review",
             "awaiting_graph_review",
+            "awaiting_report_start",
             "awaiting_final_review",
         ]:
             break
@@ -178,6 +182,13 @@ async def run_until_interaction(state: VRAState) -> VRAState:
         # Execute Next Step
         new_state = await run_step(state)
         steps_run += 1
+        
+        # Checkpoint
+        if save_callback:
+            try:
+                await save_callback(new_state)
+            except Exception as e:
+                logger.warning(f"Checkpoint save failed: {e}")
 
         # Check for deadlock (no state change)
         if new_state.get("current_step") == step:

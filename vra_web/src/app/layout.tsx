@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Providers } from "@/components/session-provider";
+import { ToastProvider } from "@/components/ui/use-toast"; // Added import for ToastProvider
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -28,10 +29,12 @@ export default function RootLayout({
                     inter.variable
                 )}
             >
-                <Providers>
-                    <AuthGuard>{children}</AuthGuard>
-                    <GlobalPaperDialog />
-                </Providers>
+                <ToastProvider>
+                    <Providers>
+                        <AuthGuard>{children}</AuthGuard>
+                        <GlobalPaperDialog />
+                    </Providers>
+                </ToastProvider>
             </body>
         </html>
     );

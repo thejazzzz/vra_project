@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect, useRef } from "react";
 import { useResearchStore } from "@/lib/store";
 import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
     AlertTriangle,
     CheckCircle,
     RefreshCw,
+    Play,
 } from "lucide-react";
 import Link from "next/link";
 import { PaperReviewDialog } from "@/components/paper-review-dialog";
@@ -41,6 +42,7 @@ export default function ResearchOverviewPage({
 
     const isPaperReviewNeeded = currentStep === "awaiting_research_review";
     const isGraphReviewNeeded = currentStep === "awaiting_graph_review";
+    const isReportReady = currentStep === "awaiting_report_start";
 
     const computeConfidence = () => {
         if (paperCount >= 10 && conceptCount >= 20) {
@@ -53,6 +55,34 @@ export default function ResearchOverviewPage({
     };
 
     const confidence = computeConfidence();
+
+    // Polling Logic: Check status every 4 seconds if in an intermediate step
+    const INTERMEDIATE_STEPS = [
+        "awaiting_analysis",
+        "awaiting_paper_summaries",
+        "awaiting_graphs",
+        "awaiting_gap_analysis",
+        "awaiting_hypothesis",
+        "reviewing_hypotheses",
+        "awaiting_report",
+    ];
+
+    const shouldPoll = INTERMEDIATE_STEPS.includes(currentStep || "");
+    const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        if (shouldPoll) {
+            pollingRef.current = setInterval(() => {
+                syncState(id);
+            }, 4000);
+        } else {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+        }
+
+        return () => {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+        };
+    }, [shouldPoll, id, syncState]);
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -115,6 +145,30 @@ export default function ResearchOverviewPage({
                         >
                             <Link href={`/research/${id}/knowledge`}>
                                 Review Graph
+                            </Link>
+                        </Button>
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {isReportReady && (
+                <Alert className="border-green-500/50 bg-green-500/10">
+                    <Play className="h-4 w-4 text-green-500" />
+                    <AlertTitle className="text-green-500 font-bold">
+                        Report Planning Complete
+                    </AlertTitle>
+                    <AlertDescription className="flex justify-between items-center mt-2">
+                        <span>
+                            The research report structure is ready. You can now
+                            generate the full report.
+                        </span>
+                        <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            asChild
+                        >
+                            <Link href={`/research/${id}/report`}>
+                                Go to Report
                             </Link>
                         </Button>
                     </AlertDescription>

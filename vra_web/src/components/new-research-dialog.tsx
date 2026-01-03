@@ -57,10 +57,21 @@ export function NewResearchDialog({
             }
         } catch (err: any) {
             console.error("Failed to start research", err);
-            setError(
-                err.response?.data?.detail ||
-                    "Failed to start research. Please try again."
-            );
+            const detail = err.response?.data?.detail;
+            let errorMessage = "Failed to start research. Please try again.";
+
+            if (detail) {
+                if (typeof detail === "string") {
+                    errorMessage = detail;
+                } else if (Array.isArray(detail)) {
+                    errorMessage = detail
+                        .map((e: any) => e.msg || JSON.stringify(e))
+                        .join("; ");
+                } else {
+                    errorMessage = JSON.stringify(detail);
+                }
+            }
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }

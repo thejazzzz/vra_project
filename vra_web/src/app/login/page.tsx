@@ -40,9 +40,21 @@ export default function LoginPage() {
             router.push("/dashboard"); // Redirect to dashboard
         } catch (err: any) {
             console.error("Login failed", err);
-            setError(
-                err.response?.data?.detail || "Login failed. Please try again."
-            );
+            const detail = err.response?.data?.detail;
+            let message = "Login failed. Please try again.";
+
+            if (detail) {
+                if (typeof detail === "string") {
+                    message = detail;
+                } else if (Array.isArray(detail)) {
+                    message = detail
+                        .map((e: any) => e.msg || JSON.stringify(e))
+                        .join("; ");
+                } else {
+                    message = JSON.stringify(detail);
+                }
+            }
+            setError(message);
         } finally {
             setIsLoading(false);
         }

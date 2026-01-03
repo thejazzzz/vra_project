@@ -50,11 +50,22 @@ class InteractiveReportingService:
             
             # If already active, return existing
             if state.get("report_state") and state["report_state"].get("report_status") != "idle":
-                 logger.info(f"Report already active for {session_id}, returning current state.")
+                 logger.info(f"Report already active for {session_id}.")
                  rep = state["report_state"]
-                 if rep.get("user_confirmed_start") and confirm:
-                     logger.warning(f"Session {session_id} re-initialized but already active.")
-                 db.commit() # Release lock
+                 
+                 # Fix for UI Loop: If already planned but not confirmed start, confirm it now.
+                 if not rep.get("user_confirmed_start") and confirm:
+                      logger.info(f"Confirming start for pre-planned report {session_id}")
+                      rep["user_confirmed_start"] = True
+                      row.state = state # Needed for flag_modified
+                      flag_modified(row, "state")
+                      db.commit()
+                 elif rep.get("user_confirmed_start") and confirm:
+                      logger.warning(f"Session {session_id} re-initialized but already active.")
+                      db.commit() # Just release lock
+                 else:
+                      db.commit() # Just release lock
+
                  return rep
 
             # Plan

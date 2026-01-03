@@ -30,7 +30,7 @@ class HypothesisGenerationAgent:
     Phase 4: Generates testable research hypotheses based on identified gaps and trends.
     """
     
-    def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         logger.info("🧪 Hypothesis Agent: Generating hypotheses...")
         
         query = state.get("query", "")
@@ -45,43 +45,21 @@ class HypothesisGenerationAgent:
              context_str = "No specific structural gaps found. Focus on general emerging trends."
         else:
              gap_contexts = []
+             import asyncio
+             
              for g in active_gaps:
                  concept = g.get('concept', 'Unknown concept')
                  desc = g.get('description', 'No description available')
                  
-                 
-                 
-                 # Targeted Retrieval
-                 import asyncio
-                 import concurrent.futures
-                 
+                 # Targeted Retrieval (Async)
                  retrieval_query = f"{concept} limitations challenges future work"
                  try:
-                     evidence = asyncio.run(get_relevant_context(
+                     evidence = await get_relevant_context(
                          retrieval_query, 
                          limit=3, 
                          max_tokens=600,
                          agent_name="hypothesis_agent"
-                     ))
-                 except RuntimeError:
-                     # Fallback: Loop likely running. Offload to clean thread to avoid deadlock.
-                     logger.warning("HypothesisAgent: Event loop running. Offloading async retrieval to new thread.")
-                     try:
-                         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                             # Run asyncio.run in a separate thread which has no loop issues
-                             future = executor.submit(
-                                 asyncio.run, 
-                                 get_relevant_context(
-                                     retrieval_query, 
-                                     limit=3, 
-                                     max_tokens=600,
-                                     agent_name="hypothesis_agent"
-                                 )
-                             )
-                             evidence = future.result(timeout=30)
-                     except Exception as e2:
-                         logger.error(f"HypothesisAgent: Threaded fallback failed: {e2}")
-                         evidence = ""
+                     )
                  except Exception as e:
                      logger.error(f"HypothesisAgent: Async retrieval error: {e}")
                      evidence = ""
@@ -121,7 +99,15 @@ class HypothesisGenerationAgent:
         """
         
         try:
-            response_text = generate_response(prompt, model="gpt-4o-mini", temperature=0.7)
+            # Sync LLM call wrapped in thread
+            import asyncio
+            response_text = await asyncio.to_thread(
+                generate_response, 
+                prompt, 
+                model="gpt-4o-mini", 
+                temperature=0.7
+            )
+            
             # Extract JSON
             json_str = extract_json_object(response_text)
             if json_str:

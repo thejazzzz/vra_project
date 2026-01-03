@@ -240,4 +240,96 @@ export interface UserResponse {
     id: string;
     email: string;
     role: string;
+    is_admin?: boolean;
+}
+
+// --- Reporting Agent Types (Phase 3.2) ---
+
+export type ReportStatus =
+    | "idle"
+    | "planned"
+    | "in_progress"
+    | "awaiting_final_review"
+    | "validating"
+    | "finalizing"
+    | "completed"
+    | "failed";
+
+export type SectionStatus =
+    | "planned"
+    | "generating"
+    | "review"
+    | "accepted"
+    | "error";
+
+export interface SectionHistory {
+    revision: number;
+    content: string;
+    content_hash: string;
+    feedback?: string;
+    timestamp: string;
+    prompt_version: string;
+    model_name: string;
+}
+
+export interface ReportSection {
+    section_id: string;
+    status: SectionStatus;
+    title: string;
+    description: string;
+    depends_on: string[];
+    template_key: string;
+    content?: string;
+    revision: number;
+    max_revisions: number;
+    history: SectionHistory[];
+    quality_scores?: Record<string, number>;
+}
+
+export interface ReportState {
+    report_status: ReportStatus;
+    sections: ReportSection[];
+    locks: {
+        report: boolean;
+        sections: Record<string, boolean>;
+    };
+    last_successful_step?: { section_id: string; phase: string };
+    section_order_hash: string;
+    user_confirmed_start: boolean;
+    user_confirmed_finalize: boolean;
+    created_at: string;
+    updated_at: string;
+    metrics: Record<string, any>;
+}
+
+export interface ResetSectionRequest {
+    session_id: string;
+    force?: boolean;
+}
+
+// Update BackendResearchState to include report_state
+export interface BackendResearchState {
+    query: string;
+    audience: string;
+    current_step: string;
+    collected_papers: any[];
+    selected_papers: any[];
+    global_analysis: any;
+    research_gaps: any[];
+    concept_trends: Record<string, TrendMetrics>;
+    hypotheses?: any[];
+    reviews?: any[];
+    author_graph: {
+        nodes: any[];
+        links: any[];
+        meta?: {
+            edges_present: boolean;
+            metrics_valid: boolean;
+            [key: string]: any;
+        };
+    };
+    knowledge_graph: { nodes: any[]; links: any[] };
+    draft_report: string;
+    report_state?: ReportState; // Added
+    user_feedback?: string;
 }

@@ -1,5 +1,4 @@
-# File: api/routers/planner.py
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from api.models.research_models import ResearchRequest
 from state.state_schema import VRAState
@@ -13,6 +12,7 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
 def _load_or_create_state(query: str, user_id: str):
     state = load_state_for_query(query, user_id)
     if state:
@@ -35,7 +35,6 @@ def _load_or_create_state(query: str, user_id: str):
         audience="general",
         user_id=user_id,
     )
-
 
 from api.dependencies.auth import get_current_user, get_db
 from database.models.auth_models import User, ResearchSession, SessionStatus
@@ -200,10 +199,44 @@ class PaperReviewRequest(BaseModel):
     selected_paper_ids: list[str]
     audience: str = "industry"
 
+async def run_background_workflow(session_id: str, state: VRAState, user_id: str, db_session_maker):
+    """
+    Wrapper to run workflow in background and handle state/db updates.
+    We need a new DB session for the background thread/task.
+    """
+    logger.info(f"🚀 Starting background workflow for {session_id}")
+    
+    async def save_checkpoint(current_state: VRAState):
+        """Callback to save state during workflow execution."""
+        try:
+             save_state_for_query(session_id, current_state, user_id)
+             with db_session_maker() as db:
+                 update_session_status(db, session_id, current_state.get("current_step"))
+        except Exception as e:
+            logger.error(f"Checkpoint failed: {e}")
+
+    try:
+        # Run workflow with checkpointing
+        updated = await run_until_interaction(state, save_callback=save_checkpoint)
+        
+        # Final Save (redundant but safe)
+        await save_checkpoint(updated)
+
+    except Exception as e:
+        logger.error(f"Background workflow failed for {session_id}: {e}", exc_info=True)
+        # Try to save error state
+        try:
+            state["error"] = str(e)
+            state["current_step"] = "failed"
+            await save_checkpoint(state)
+        except Exception as inner_e:
+             logger.error(f"Critical failure in background error handling: {inner_e}")
+
 
 @router.post("/review")
 async def review_papers(
     payload: PaperReviewRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -231,8 +264,6 @@ async def review_papers(
     selected_ids = set(payload.selected_paper_ids)
     all_papers = state.get("collected_papers", [])
 
-    # Keep only selected papers in the active set
-    # We still keep 'collected_papers' as history if needed, but 'selected_papers' drives the next steps
     final_selection = [p for p in all_papers if p.get("canonical_id") in selected_ids]
 
     if not final_selection:
@@ -242,7 +273,6 @@ async def review_papers(
     state["audience"] = payload.audience or "industry"
 
     # Trigger next step: Analysis
-    # We manually set the transition here because this IS the user interaction
     state["current_step"] = "awaiting_analysis"
 
     # Save immediately
@@ -257,18 +287,11 @@ async def review_papers(
         payload={"selected_count": len(final_selection)}
     )
 
-    # Run loop
-    try:
-        updated = await run_until_interaction(state)
-        save_state_for_query(session_id, updated, user_id)
-        
-        update_session_status(db, session_id, updated.get("current_step"))
-        
-        return {"state": updated}
-    except Exception as e:
-        logger.error("Review processing failed", exc_info=True)
-        update_session_status(db, session_id, "failed")
-        raise HTTPException(500, f"Failed to process review: {e}")
+    # Run in Background
+    from database.db import SessionLocal
+    background_tasks.add_task(run_background_workflow, session_id, state, user_id, SessionLocal)
+
+    return {"state": state}
 
 
 class GraphReviewRequest(BaseModel):
@@ -280,6 +303,7 @@ class GraphReviewRequest(BaseModel):
 @router.post("/review-graph")
 async def review_graph(
     payload: GraphReviewRequest, 
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -292,24 +316,11 @@ async def review_graph(
     
     # Ownership Check
     state = load_state_for_query(session_id, user_id)
-    # If state not found, we fail. We DO NOT create new state here.
     if not state:
          logger.error(f"State not found for session_id={session_id} user_id={user_id}")
          raise HTTPException(404, "State not found")
 
-    state["user_id"] = user_id # Ensure user_id is set
-    # User requested verifying state ownership ID too, but let's stick to DB check first?
-    
-    # Check DB ownership explicitly as well or relying on state loading by user_id?
-    # services/state_service.py filters by user_id. So if it loads, it's owned.
-    # BUT explicitly checking matching IDs is safer.
-    if not state:
-         raise HTTPException(404, "State not found")
-         
-    # Check session record
-    # Note: Using 'db' dependency injected earlier
-    # Wait, the user instruction was "verify that the state/session is actually owned by current_user... if the state's owner id... does not match".
-    # Since VRAState schema doesn't strictly have owner_id, we rely on the DB session check.
+    state["user_id"] = user_id 
     
     session_record = db.query(ResearchSession).filter(ResearchSession.session_id == session_id).first()
     if not session_record:
@@ -321,13 +332,9 @@ async def review_graph(
     
     # Validation: Ensure we are in the right state
     if state.get("current_step") != "awaiting_graph_review":
-        # Strict check or lenient? Lenient allows recovery. 
-        # But let's log warning.
         logger.warning(f"Graph review received but state is {state.get('current_step')}")
 
     # Set next step
-    # We move to Gap Analysis (Level 4) or Reporting (Level 5)
-    # Workflow.py says: awaiting_gap_analysis
     state["current_step"] = "awaiting_gap_analysis"
     if payload.feedback:
         state["user_feedback"] = payload.feedback
@@ -343,17 +350,11 @@ async def review_graph(
         payload={"approved": payload.approved, "feedback": payload.feedback}
     )
 
-    try:
-        updated = await run_until_interaction(state)
-        save_state_for_query(session_id, updated, user_id)
-        
-        update_session_status(db, session_id, updated.get("current_step"))
-        
-        return {"state": updated}
-    except Exception as e:
-        logger.error("Graph review continuation failed", exc_info=True)
-        update_session_status(db, session_id, "failed")
-        raise HTTPException(500, f"Workflow failed: {e}")
+    # Run in Background
+    from database.db import SessionLocal
+    background_tasks.add_task(run_background_workflow, session_id, state, user_id, SessionLocal)
+
+    return {"state": state}
 
 
 @router.get("/status/{session_id}")
