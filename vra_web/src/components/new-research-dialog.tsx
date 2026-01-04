@@ -61,12 +61,15 @@ export function NewResearchDialog({
             let errorMessage = "Failed to start research. Please try again.";
 
             if (detail) {
-                if (typeof detail === "string") {
+                if (Array.isArray(detail)) {
+                    if (detail.length > 0) {
+                        errorMessage = detail
+                            .map((e: any) => e.msg || JSON.stringify(e))
+                            .join("; ");
+                    }
+                    // else: length 0 array -> keep default errorMessage
+                } else if (typeof detail === "string") {
                     errorMessage = detail;
-                } else if (Array.isArray(detail)) {
-                    errorMessage = detail
-                        .map((e: any) => e.msg || JSON.stringify(e))
-                        .join("; ");
                 } else {
                     errorMessage = JSON.stringify(detail);
                 }

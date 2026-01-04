@@ -148,11 +148,11 @@ export function SectionWorkspace({
         (section.status === "error" && !section.content)
     ) {
         return (
-            <div className="h-full flex flex-col items-center justify-center text-center p-12 text-gray-500">
+            <div className="h-full flex flex-col items-center justify-center text-center p-12 text-gray-400 bg-neutral-950">
                 {isLocked ? (
-                    <div className="max-w-md bg-gray-50 p-6 rounded-xl border border-gray-100">
-                        <Lock className="w-8 h-8 mx-auto mb-4 text-gray-400" />
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    <div className="max-w-md bg-neutral-900 p-6 rounded-xl border border-neutral-800">
+                        <Lock className="w-8 h-8 mx-auto mb-4 text-gray-500" />
+                        <h3 className="text-lg font-semibold text-gray-100 mb-2">
                             Section Locked
                         </h3>
                         <p className="text-sm">
@@ -162,7 +162,7 @@ export function SectionWorkspace({
                             {unresolvedDeps.map((dep) => (
                                 <span
                                     key={dep}
-                                    className="px-2 py-1 bg-white border rounded text-xs font-mono"
+                                    className="px-2 py-1 bg-neutral-800 border-neutral-700 border rounded text-xs font-mono text-gray-300"
                                 >
                                     {dep}
                                 </span>
@@ -171,19 +171,19 @@ export function SectionWorkspace({
                     </div>
                 ) : (
                     <div className="max-w-md">
-                        <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <ArrowRight className="w-6 h-6 text-blue-600" />
+                        <div className="w-12 h-12 bg-blue-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <ArrowRight className="w-6 h-6 text-blue-400" />
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-100 mb-2">
                             Ready to Draft
                         </h3>
-                        <p className="text-sm text-gray-600 mb-6">
+                        <p className="text-sm text-gray-400 mb-6">
                             {section.description}
                         </p>
                         <Button
                             onClick={handleGenerate}
                             disabled={isActionLoading}
-                            className="bg-blue-600 hover:bg-blue-700"
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
                         >
                             {isActionLoading ? (
                                 <Loader2 className="animate-spin mr-2 h-4 w-4" />
@@ -191,7 +191,7 @@ export function SectionWorkspace({
                             Generate Draft
                         </Button>
                         {section.status === "error" && (
-                            <p className="text-red-500 text-sm mt-4">
+                            <p className="text-red-400 text-sm mt-4">
                                 Previous generation failed. Please try again.
                             </p>
                         )}
@@ -204,12 +204,12 @@ export function SectionWorkspace({
     // 2. Generating
     if (section.status === "generating") {
         return (
-            <div className="h-full flex flex-col items-center justify-center p-12">
-                <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-4" />
-                <h3 className="text-lg font-medium text-gray-900">
+            <div className="h-full flex flex-col items-center justify-center p-12 bg-neutral-950">
+                <Loader2 className="w-10 h-10 text-blue-500 animate-spin mb-4" />
+                <h3 className="text-lg font-medium text-gray-100">
                     Writing Draft...
                 </h3>
-                <p className="text-sm text-gray-500 mt-2">
+                <p className="text-sm text-gray-400 mt-2">
                     Using{" "}
                     {section.history[section.history.length - 1]?.model_name ||
                         "AI Model"}
@@ -220,14 +220,14 @@ export function SectionWorkspace({
 
     // 3. Review & Accepted (Content View)
     return (
-        <div className="h-full flex flex-col">
+        <div className="h-full flex flex-col bg-neutral-950">
             {/* Header / Meta */}
-            <div className="border-b px-6 py-4 flex justify-between items-center bg-white sticky top-0 z-10">
+            <div className="border-b border-neutral-800 px-6 py-4 flex justify-between items-center bg-neutral-900 sticky top-0 z-10">
                 <div>
-                    <h2 className="text-xl font-bold text-gray-900">
+                    <h2 className="text-xl font-bold text-gray-100">
                         {section.title}
                     </h2>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
                         <span>
                             Revision {section.revision} /{" "}
                             {section.max_revisions}
@@ -252,14 +252,14 @@ export function SectionWorkspace({
                 <div className="flex items-center gap-2">
                     {section.status === "accepted" ? (
                         <div className="flex items-center gap-3">
-                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium flex items-center gap-2">
+                            <span className="px-3 py-1 bg-green-900/30 text-green-400 rounded-full text-sm font-medium flex items-center gap-2 border border-green-800">
                                 <Check className="w-4 h-4" /> Accepted
                             </span>
                             <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={handleReset}
-                                className="text-gray-400 hover:text-red-600"
+                                className="text-gray-400 hover:text-red-400 hover:bg-red-950/30"
                             >
                                 Reset
                             </Button>
@@ -272,11 +272,12 @@ export function SectionWorkspace({
                                     setShowActionPanel(!showActionPanel)
                                 }
                                 disabled={isActionLoading}
+                                className="border-neutral-700 text-gray-300 hover:bg-neutral-800 hover:text-white"
                             >
                                 Request Changes
                             </Button>
                             <Button
-                                className="bg-green-600 hover:bg-green-700"
+                                className="bg-green-600 hover:bg-green-700 text-white"
                                 onClick={() => handleSubmitReview(true)}
                                 disabled={isActionLoading}
                             >
@@ -293,17 +294,17 @@ export function SectionWorkspace({
             </div>
 
             {/* Content Body */}
-            <div className="flex-1 overflow-y-auto p-6 lg:p-10 bg-white">
-                <div className="max-w-4xl mx-auto prose prose-blue prose-lg">
+            <div className="flex-1 overflow-y-auto p-6 lg:p-10 bg-neutral-950">
+                <div className="max-w-4xl mx-auto prose prose-invert prose-blue prose-lg">
                     <ReactMarkdown>{section.content || ""}</ReactMarkdown>
                 </div>
             </div>
 
             {/* Action Panel (Feedback) */}
             {showActionPanel && section.status === "review" && (
-                <div className="border-t p-6 bg-gray-50">
+                <div className="border-t border-neutral-800 p-6 bg-neutral-900">
                     <div className="max-w-2xl mx-auto space-y-4">
-                        <h4 className="font-semibold text-gray-900">
+                        <h4 className="font-semibold text-gray-100">
                             Request Changes
                         </h4>
                         <Textarea
@@ -311,6 +312,7 @@ export function SectionWorkspace({
                             value={feedback}
                             onChange={(e) => setFeedback(e.target.value)}
                             maxLength={500}
+                            className="bg-neutral-950 border-neutral-800 text-gray-100 placeholder:text-gray-600 focus:border-blue-600"
                         />
                         <div className="flex justify-between items-center text-sm text-gray-500">
                             <span>{feedback.length} / 500 characters</span>
@@ -318,12 +320,13 @@ export function SectionWorkspace({
                                 <Button
                                     variant="ghost"
                                     onClick={() => setShowActionPanel(false)}
+                                    className="text-gray-400 hover:text-white hover:bg-neutral-800"
                                 >
                                     Cancel
                                 </Button>
                                 <Button
                                     variant="default" // Orange-ish for regen?
-                                    className="bg-orange-500 hover:bg-orange-600 text-white"
+                                    className="bg-orange-600 hover:bg-orange-700 text-white"
                                     onClick={() => handleSubmitReview(false)}
                                     disabled={
                                         !feedback.trim() ||
@@ -339,7 +342,10 @@ export function SectionWorkspace({
                             </div>
                         </div>
                         {section.revision >= section.max_revisions && (
-                            <Alert variant="destructive">
+                            <Alert
+                                variant="destructive"
+                                className="bg-red-950/20 border-red-900"
+                            >
                                 <AlertTriangle className="h-4 w-4" />
                                 <AlertTitle>Limit Reached</AlertTitle>
                                 <AlertDescription>

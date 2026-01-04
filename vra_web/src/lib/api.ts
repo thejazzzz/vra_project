@@ -1,5 +1,5 @@
 //vra_web/src/lib/api.ts
-import axios from "axios";
+import axios, { AxiosInstance } from "axios";
 import {
     LoginRequest,
     LoginResponse,
@@ -15,13 +15,25 @@ import {
 // Default to localhost:7000 (User's current port) if not specified
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:7000";
 
-const api = axios.create({
+// Shared config
+const baseConfig = {
     baseURL: API_URL,
-    timeout: 300000, // 300 seconds (5 mins) for long research tasks
     headers: {
         "Content-Type": "application/json",
     },
     withCredentials: true, // Send cookies with requests
+};
+
+// 1. Default Client (Fast endpoints: 30s)
+const defaultApi = axios.create({
+    ...baseConfig,
+    timeout: 30000, // 30 seconds
+});
+
+// 2. Long-Running Client (Heavy endpoints: 300s)
+const longRunningApi = axios.create({
+    ...baseConfig,
+    timeout: 300000, // 5 minutes
 });
 
 // Refresh Token Logic
@@ -40,94 +52,101 @@ const processQueue = (error: any = null) => {
     failedQueue = [];
 };
 
-api.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-        const originalRequest = error.config;
+// Centralized Interceptor Setup
+const setupInterceptors = (instance: AxiosInstance) => {
+    instance.interceptors.response.use(
+        (response) => response,
+        async (error) => {
+            const originalRequest = error.config;
 
-        // @ts-ignore
-        if (
-            error.response?.status === 401 &&
-            !originalRequest._retry &&
-            !originalRequest.skipAuthRefresh
-        ) {
-            if (isRefreshing) {
-                return new Promise(function (resolve, reject) {
-                    failedQueue.push({ resolve, reject });
-                })
-                    .then(() => {
-                        return api(originalRequest);
+            // @ts-ignore
+            if (
+                error.response?.status === 401 &&
+                !originalRequest._retry &&
+                !originalRequest.skipAuthRefresh
+            ) {
+                if (isRefreshing) {
+                    return new Promise(function (resolve, reject) {
+                        failedQueue.push({ resolve, reject });
                     })
-                    .catch((err) => {
-                        return Promise.reject(err);
-                    });
-            }
-
-            originalRequest._retry = true;
-            isRefreshing = true;
-
-            try {
-                // Attempt to refresh the token using the HttpOnly cookie
-                // Pass custom config to bypass interceptor loop
-                await api.post(
-                    "/auth/refresh",
-                    {},
-                    {
-                        // @ts-ignore - custom config property
-                        skipAuthRefresh: true,
-                    }
-                );
-
-                // If successful, retry the queued requests
-                processQueue(null);
-                isRefreshing = false;
-
-                // Retry the original request
-                return api(originalRequest);
-            } catch (err) {
-                processQueue(err);
-                isRefreshing = false;
-
-                // If refresh fails, we must redirect to login
-                if (typeof window !== "undefined") {
-                    // Avoid infinite loops if already on login
-                    if (!window.location.pathname.startsWith("/login")) {
-                        window.location.href = "/login";
-                    }
+                        .then(() => {
+                            return instance(originalRequest);
+                        })
+                        .catch((err) => {
+                            return Promise.reject(err);
+                        });
                 }
-                return Promise.reject(err);
+
+                originalRequest._retry = true;
+                isRefreshing = true;
+
+                try {
+                    // Attempt to refresh the token using the HttpOnly cookie
+                    // Use defaultApi for refresh call (it's fast)
+                    await defaultApi.post(
+                        "/auth/refresh",
+                        {},
+                        {
+                            // @ts-ignore - custom config property
+                            skipAuthRefresh: true,
+                        }
+                    );
+
+                    // If successful, retry the queued requests
+                    processQueue(null);
+                    isRefreshing = false;
+
+                    // Retry the original request
+                    return instance(originalRequest);
+                } catch (err) {
+                    processQueue(err);
+                    isRefreshing = false;
+
+                    // If refresh fails, we must redirect to login
+                    if (typeof window !== "undefined") {
+                        // Avoid infinite loops if already on login
+                        if (!window.location.pathname.startsWith("/login")) {
+                            window.location.href = "/login";
+                        }
+                    }
+                    return Promise.reject(err);
+                }
             }
+
+            return Promise.reject(error);
         }
+    );
+};
 
-        return Promise.reject(error);
-    }
-);
+// Apply logic to both
+setupInterceptors(defaultApi);
+setupInterceptors(longRunningApi);
 
+// EXPORTS
+
+// Auth: Fast
 export const authApi = {
     login: (email: string) =>
-        api.post("/auth/login", { email }).then((res) => res.data),
+        defaultApi.post("/auth/login", { email }).then((res) => res.data),
 
-    me: () => api.get<UserResponse>("/auth/me").then((res) => res.data),
+    me: () => defaultApi.get<UserResponse>("/auth/me").then((res) => res.data),
 
     logout: () =>
-        api.post("/auth/logout").then(() => {
-            // Determine if we need to do anything client side.
-            // Since we rely on cookies, just ensuring the request sent is enough.
+        defaultApi.post("/auth/logout").then(() => {
             if (typeof window !== "undefined") {
-                // Force reload or redirect might be needed by caller,
-                // but for API method just return promise.
-                localStorage.removeItem("vra_auth_token"); // Cleanup legacy if exists
+                localStorage.removeItem("vra_auth_token");
             }
         }),
 };
 
+// Planner: Mixed
 export const plannerApi = {
     plan: (
         query: string,
         include_paper_ids: string[] = [],
         audience: string = "industry"
     ): Promise<PlanResponse> =>
-        api
+        longRunningApi // HEAVY
             .post<PlanResponse>("/planner/plan", {
                 query,
                 include_paper_ids,
@@ -136,31 +155,32 @@ export const plannerApi = {
             .then((res) => res.data),
 
     status: (query: string): Promise<StatusResponse> =>
-        api
+        defaultApi // Fast
             .get<StatusResponse>(`/planner/status/${encodeURIComponent(query)}`)
             .then((res) => res.data),
 
     review: (payload: ReviewPayload): Promise<ReviewResponse> =>
-        api
+        defaultApi // Fast
             .post<ReviewResponse>("/planner/review", payload)
             .then((res) => res.data),
 
     reviewGraph: (payload: GraphReviewPayload): Promise<GraphReviewResponse> =>
-        api
+        defaultApi // Fast
             .post<GraphReviewResponse>("/planner/review-graph", payload)
             .then((res) => res.data),
 
     continue: (sessionId: string): Promise<StatusResponse> =>
-        api
+        defaultApi // Usually fast status update
             .post<StatusResponse>(
                 `/planner/continue/${encodeURIComponent(sessionId)}`
             )
             .then((res) => res.data),
 
     getSessions: (): Promise<any> =>
-        api.get<any>("/planner/sessions").then((res) => res.data),
+        defaultApi.get<any>("/planner/sessions").then((res) => res.data),
 };
 
+// Research: Fast? Depends. Assuming manual add is fast.
 export const researchApi = {
     addManualPaper: async (payload: {
         query: string;
@@ -170,20 +190,21 @@ export const researchApi = {
         authors?: string[];
         year?: number;
         source?: string;
-    }) => api.post("/research/manual", payload),
+    }) => defaultApi.post("/research/manual", payload),
 };
 
+// Graph: Fast reads
 export const graphApi = {
     getData: async (query: string) =>
-        api.get(`/graphs/graphs/${encodeURIComponent(query)}`),
+        defaultApi.get(`/graphs/graphs/${encodeURIComponent(query)}`),
     getAuthors: async (query: string) =>
-        api.get(`/graphs/authors/${encodeURIComponent(query)}`),
+        defaultApi.get(`/graphs/authors/${encodeURIComponent(query)}`),
     getTrends: async (query: string) =>
-        api.get(`/graphs/trends/${encodeURIComponent(query)}`),
+        defaultApi.get(`/graphs/trends/${encodeURIComponent(query)}`),
     getGaps: async (query: string) =>
-        api.get(`/graphs/gaps/${encodeURIComponent(query)}`),
+        defaultApi.get(`/graphs/gaps/${encodeURIComponent(query)}`),
     getConceptContext: async (concept: string) =>
-        api.get<{
+        defaultApi.get<{
             concept: string;
             snippets: Array<{
                 document: string;
@@ -192,29 +213,26 @@ export const graphApi = {
         }>(`/graph-viewer/context/${encodeURIComponent(concept)}`),
 };
 
-// Phase 3.2: Reporting API
+// Reporting: Mixed
 export const reportingApi = {
-    // Initialize (Start) Report Generation
-    // Backend: POST /init { session_id, confirm }
+    // Init: Fast
     init: (sessionId: string, confirm: boolean = true) =>
-        api
+        defaultApi
             .post("/reporting/init", {
                 session_id: sessionId,
                 confirm,
             })
             .then((res) => res.data.report_state),
 
-    // Get Report State (Polling)
-    // Backend: GET /state/{session_id}
+    // Get State: Fast (Polling)
     getState: (sessionId: string) =>
-        api
+        defaultApi
             .get(`/reporting/state/${encodeURIComponent(sessionId)}`)
             .then((res) => res.data.report_state),
 
-    // Generate a specific section
-    // Backend: POST /section/{section_id}/generate { session_id }
+    // Generate: VERY HEAVY
     generateSection: (sessionId: string, sectionId: string) =>
-        api
+        longRunningApi
             .post(
                 `/reporting/section/${encodeURIComponent(sectionId)}/generate`,
                 {
@@ -223,8 +241,7 @@ export const reportingApi = {
             )
             .then((res) => res.data.section),
 
-    // Submit Review (Accept/Reject/Feedback)
-    // Backend: POST /section/{section_id}/review { session_id, accepted, feedback }
+    // Review: Fast
     submitReview: (
         sessionId: string,
         sectionId: string,
@@ -233,7 +250,7 @@ export const reportingApi = {
             feedback?: string;
         }
     ) =>
-        api
+        defaultApi
             .post(
                 `/reporting/section/${encodeURIComponent(sectionId)}/review`,
                 {
@@ -243,34 +260,31 @@ export const reportingApi = {
             )
             .then((res) => res.data.section),
 
-    // Reset Section (Admin/Force or standard reset if allowed)
-    // Backend: POST /section/{section_id}/reset { session_id, force }
+    // Reset: Fast
     resetSection: (
         sessionId: string,
         sectionId: string,
         force: boolean = false
     ) =>
-        api
+        defaultApi
             .post(`/reporting/section/${encodeURIComponent(sectionId)}/reset`, {
                 session_id: sessionId,
                 force,
             })
             .then((res) => res.data.section),
 
-    // Finalize Report
-    // Backend: POST /finalize { session_id, confirm }
+    // Finalize: HEAVY (Virtual assembly can be slow)
     finalize: (sessionId: string) =>
-        api
+        longRunningApi
             .post("/reporting/finalize", {
                 session_id: sessionId,
                 confirm: true,
             })
             .then((res) => res.data.report_state),
 
-    // Export Report (returns Blob/Link)
-    // Backend: POST /export { session_id, format }
+    // Export: HEAVY
     exportReport: (sessionId: string, format: "pdf" | "docx" | "markdown") =>
-        api
+        longRunningApi
             .post(
                 "/reporting/export",
                 {
@@ -284,11 +298,12 @@ export const reportingApi = {
             .then((res) => res.data),
 };
 
+// Upload: Heavy
 export const uploadApi = {
     uploadPaper: (file: File) => {
         const formData = new FormData();
         formData.append("file", file);
-        return api
+        return longRunningApi
             .post("/upload/", formData, {
                 headers: {
                     "Content-Type": "multipart/form-data",
@@ -298,4 +313,5 @@ export const uploadApi = {
     },
 };
 
-export default api;
+// Default export for generic usage, defaulting to short timeout safely
+export default defaultApi;

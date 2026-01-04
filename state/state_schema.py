@@ -2,6 +2,12 @@
 from typing import TypedDict, List, Optional, Dict, Any, Literal
 
 # Phase 3.2: Interactive Reporting Types
+SectionType = Literal[
+    "INTRO", "LITERATURE", "ANALYSIS", "METHODOLOGY", 
+    "DESIGN", "IMPLEMENTATION", "TESTING", "RESULTS", 
+    "CONCLUSION", "REFERENCE", "APPENDIX"
+]
+
 class SectionHistory(TypedDict):
     revision: int
     content: str       # Markdown
@@ -11,6 +17,10 @@ class SectionHistory(TypedDict):
     prompt_version: str # e.g. "v1.2"
     model_name: str     # e.g. "gpt-4o"
 
+from typing_extensions import NotRequired
+from pydantic import BaseModel, Field, validator
+import re
+
 class ReportSectionState(TypedDict):
     section_id: str
     status: Literal["planned", "generating", "review", "accepted", "error"]
@@ -19,11 +29,33 @@ class ReportSectionState(TypedDict):
     depends_on: List[str] # IDs of sections that must be ACCEPTED before this one starts
     template_key: str     # Key for prompt template
     
+    # Hierarchical & Compilation Fields (Optional for backward compatibility)
+    chapter_index: NotRequired[int]      # e.g. 1
+    section_index: NotRequired[str]      # e.g. "1.1"
+    section_type: NotRequired[SectionType]
+    target_words: NotRequired[int]       # Budget
+    current_words: NotRequired[int]      # Progress
+    compilation_phase: NotRequired[Literal["PLANNED", "OUTLINING", "DRAFTING", "EXPANDING", "REFINING", "COMPLETE"]]
+    subsections: NotRequired[List['ReportSectionState']] # Nested support
+    
     content: Optional[str] # Current active content
     revision: int          # Current revision number
     max_revisions: int     # Default: 3
     history: List[SectionHistory]
     quality_scores: Optional[Dict[str, float]] # e.g. {"coherence": 0.9}
+
+class SectionStateValidator(BaseModel):
+    """Runtime validator for stricter safety."""
+    chapter_index: int = Field(ge=0)
+    target_words: int = Field(ge=0)
+    current_words: int = Field(ge=0)
+    section_index: str
+
+    @validator("section_index")
+    def validate_index_format(cls, v):
+        if not re.match(r"^\d+(\.\d+)*$", v):
+            raise ValueError(f"Invalid section_index format: {v}")
+        return v
 
 class ReportState(TypedDict):
     # Global Lifecycle

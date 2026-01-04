@@ -52,24 +52,32 @@ app = FastAPI(
 )
 
 # CORS Configuration
-origins = []
 if env == "local":
-    origins = ["http://localhost:3000", "http://localhost:5173"]  # Common dev ports
+    # Allow any localhost/127.0.0.1 port in development
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 else:
     # Production origins from environment variable
     origins_str = os.getenv("ALLOWED_ORIGINS", "")
     origins = [origin.strip() for origin in origins_str.split(",") if origin.strip()]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Add Rate Limiting (Global)
-limiter = RateLimitMiddleware(requests_per_minute=100)
+# Local dev needs higher limits for polling/hot-reload
+limit_count = 1200 if env == "local" else 100
+limiter = RateLimitMiddleware(requests_per_minute=limit_count)
 app.middleware("http")(limiter)
 
 from fastapi import Request

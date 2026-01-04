@@ -54,16 +54,14 @@ class InteractiveReportingService:
                  rep = state["report_state"]
                  
                  # Fix for UI Loop: If already planned but not confirmed start, confirm it now.
-                 if not rep.get("user_confirmed_start") and confirm:
+                 if not rep.get("user_confirmed_start"):
                       logger.info(f"Confirming start for pre-planned report {session_id}")
                       rep["user_confirmed_start"] = True
                       row.state = state # Needed for flag_modified
                       flag_modified(row, "state")
                       db.commit()
-                 elif rep.get("user_confirmed_start") and confirm:
-                      logger.warning(f"Session {session_id} re-initialized but already active.")
-                      db.commit() # Just release lock
                  else:
+                      logger.warning(f"Session {session_id} re-initialized but already active.")
                       db.commit() # Just release lock
 
                  return rep
@@ -141,13 +139,21 @@ class InteractiveReportingService:
         save_state_for_query(session_id, state, user_id) 
 
         try:
-            # 6. Call Generator (Sync)
-            from services.reporting.report_generator import ReportGenerator
+            # 6. Call Compiler (Sync)
+            # from services.reporting.report_generator import ReportGenerator 
+            from services.reporting.section_compiler import SectionCompiler
             
-            result = ReportGenerator.generate_section_content(section_id, state)
-            content = result["content"]
-            prompt_version = result.get("prompt_version", "unknown")
-            model_name = result.get("model_name", "unknown")
+            # Legacy Appendix Check
+            if section_id == "appendix":
+                from services.reporting.appendix_generator import AppendixGenerator
+                content = AppendixGenerator.generate_appendix(state)
+                model_name = "deterministic"
+                prompt_version = "v1"
+            else:
+                compiler = SectionCompiler(state)
+                content = compiler.compile(target_section)
+                model_name = compiler.model_name
+                prompt_version = "compiler_v1.0"
             
             if not ExportService.validate_markdown(content):
                  raise ValueError("Generated content failed Markdown validation (unsafe HTML or malformed).")

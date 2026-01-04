@@ -48,9 +48,6 @@ async def run_step(state: VRAState) -> VRAState:
         # ---------------------------------------------------------
         # STEP 2 — GLOBAL ANALYSIS
         # ---------------------------------------------------------
-        # ---------------------------------------------------------
-        # STEP 2 — GLOBAL ANALYSIS
-        # ---------------------------------------------------------
         if current == "awaiting_analysis":
             return await _handle_analysis_step(state)
 
@@ -119,6 +116,14 @@ async def run_step(state: VRAState) -> VRAState:
         if current == "reviewing_hypotheses":
             state = await asyncio.to_thread(reviewer_agent.run, state)
             state["current_step"] = "awaiting_report"
+            return state
+
+        # ---------------------------------------------------------
+        # STEP 5 — REPORT GENERATION (Pre-check)
+        # ---------------------------------------------------------
+        if current == "awaiting_report_start":
+            if state.get("report_start_approved", False):
+                 state["current_step"] = "awaiting_report"
             return state
 
         # ---------------------------------------------------------

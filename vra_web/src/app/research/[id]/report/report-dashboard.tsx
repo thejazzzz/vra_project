@@ -72,7 +72,7 @@ export function ReportDashboard({ sessionId }: ReportDashboardProps) {
         } finally {
             setIsLoading(false);
         }
-    }, [sessionId]); // Removed state and activeSectionId deps to prevent churn
+    }, [sessionId, state]); // Added state to prevented stale closure
 
     // Auto-select Effect
     useEffect(() => {
@@ -161,10 +161,10 @@ export function ReportDashboard({ sessionId }: ReportDashboardProps) {
 
     // 3. Main Split Layout
     return (
-        <div className="h-[calc(100vh-64px)] bg-gray-50/50 flex flex-col">
+        <div className="h-[calc(100vh-64px)] bg-black flex flex-col">
             {/* Status Banners */}
             {showValidating && (
-                <div className="bg-blue-50 border-b border-blue-100 p-2 text-center text-blue-700 text-xs font-medium flex items-center justify-center gap-2">
+                <div className="bg-blue-950/50 border-b border-blue-900 p-2 text-center text-blue-300 text-xs font-medium flex items-center justify-center gap-2">
                     <Loader2 className="w-3 h-3 animate-spin" />
                     {state.report_status === "finalizing"
                         ? "Finalizing report..."
@@ -173,7 +173,7 @@ export function ReportDashboard({ sessionId }: ReportDashboardProps) {
             )}
 
             {showFailed && (
-                <div className="bg-red-50 border-b border-red-100 p-2 text-center text-red-700 text-xs font-medium flex items-center justify-center gap-2">
+                <div className="bg-red-950/50 border-b border-red-900 p-2 text-center text-red-400 text-xs font-medium flex items-center justify-center gap-2">
                     <AlertTriangle className="w-3 h-3" />
                     Report generation failed. Please check section errors or
                     reset.
@@ -195,7 +195,7 @@ export function ReportDashboard({ sessionId }: ReportDashboardProps) {
                 />
 
                 {/* Main Workspace OR Full Preview */}
-                <main className="flex-1 overflow-hidden bg-white">
+                <main className="flex-1 overflow-hidden bg-neutral-950">
                     {showFullPreview ? (
                         <FullReportPreview
                             sessionId={sessionId}

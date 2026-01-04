@@ -68,14 +68,14 @@ export function FullReportPreview({
     const isCompleted = state.report_status === "completed";
 
     return (
-        <div className="h-full flex flex-col bg-gray-50">
+        <div className="h-full flex flex-col bg-black">
             {/* Header */}
-            <div className="bg-white border-b px-8 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+            <div className="bg-neutral-900 border-b border-neutral-800 px-8 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
                 <div>
-                    <h2 className="text-xl font-bold text-gray-900">
+                    <h2 className="text-xl font-bold text-gray-100">
                         Final Report Preview
                     </h2>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-400">
                         {isCompleted
                             ? "Report finalized and ready for export."
                             : "Review the full report before finalizing."}
@@ -87,6 +87,7 @@ export function FullReportPreview({
                             <Button
                                 variant="outline"
                                 onClick={() => handleExport("markdown")}
+                                className="border-neutral-700 text-gray-300 hover:bg-neutral-800 hover:text-white"
                             >
                                 <Download className="w-4 h-4 mr-2" />
                                 Markdown
@@ -95,6 +96,7 @@ export function FullReportPreview({
                             <Button
                                 variant="outline"
                                 onClick={() => handleExport("docx")}
+                                className="border-neutral-700 text-gray-300 hover:bg-neutral-800 hover:text-white"
                             >
                                 <Download className="w-4 h-4 mr-2" />
                                 DOCX
@@ -102,6 +104,7 @@ export function FullReportPreview({
                             <Button
                                 variant="outline"
                                 onClick={() => handleExport("pdf")}
+                                className="border-neutral-700 text-gray-300 hover:bg-neutral-800 hover:text-white"
                             >
                                 <Download className="w-4 h-4 mr-2" />
                                 PDF
@@ -109,7 +112,7 @@ export function FullReportPreview({
                         </>
                     ) : (
                         <Button
-                            className="bg-green-600 hover:bg-green-700"
+                            className="bg-green-600 hover:bg-green-700 text-white"
                             onClick={handleFinalize}
                             disabled={isFinalizing}
                         >
@@ -126,8 +129,8 @@ export function FullReportPreview({
 
             {/* Scrolling Preview */}
             <div className="flex-1 overflow-auto p-8 lg:p-12">
-                <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-xl min-h-full p-12 print:shadow-none print:p-0">
-                    <div className="prose prose-blue prose-lg max-w-none">
+                <div className="max-w-4xl mx-auto bg-neutral-900 shadow-lg rounded-xl min-h-full p-12 print:shadow-none print:p-0 border border-neutral-800">
+                    <div className="prose prose-invert prose-blue prose-lg max-w-none">
                         <h1>Research Report</h1>
                         {state.sections.map((section) => (
                             <div
