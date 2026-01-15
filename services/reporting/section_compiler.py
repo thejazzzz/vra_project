@@ -24,7 +24,7 @@ class SectionCompiler:
         self.state = state
         # Force Local for heavy lifting
         self.provider = LLMProvider.LOCAL 
-        self.model_name = "llama3" 
+        self.model_name = "llama3:8b" 
 
     def compile(self, section: ReportSectionState) -> str:
         """
