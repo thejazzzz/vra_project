@@ -98,14 +98,15 @@ class SectionPlanner:
         sections.append(ReportSection(
             section_id="abstract",
             title="Abstract",
-            description="High-level summary of the project.",
-            required_data=["query"],
-            template_key="executive_summary",
-            target_words=SectionPlanner._calculate_target_words(1.0, "INTRO"),
+            description="Concise synthesis of the entire report (Generated Last).",
+            required_data=["generated_chapters"],
+            template_key="abstract_generation",
+            target_words=300, # Fixed budget
             section_type="INTRO",
             section_index="0.0",
             chapter_index=0,
-            outline=["Problem", "Proposed Solution", "Key Results"]
+            outline=["Problem", "Methodology", "Results", "Contribution"],
+            depends_on=["chapter_1", "chapter_4", "chapter_6", "chapter_8", "chapter_9"]
         ))
         
         # --- Chapter 1: Introduction ---
@@ -115,8 +116,8 @@ class SectionPlanner:
             title="Chapter 1: Introduction",
             description="Background, problem statement, and objectives.",
             required_data=["query"],
-            template_key="default_chapter",
             target_words=SectionPlanner._calculate_target_words(2.0, "INTRO"),
+            template_key="draft_skeleton",
             section_type="INTRO",
             section_index="1.0",
             chapter_index=1,
@@ -154,7 +155,7 @@ class SectionPlanner:
             title="Chapter 2: Literature Review",
             description="Review of existing works and identification of gaps.",
             required_data=["selected_papers"],
-            template_key="limitations", # Reuse/Adapt
+            template_key="draft_skeleton", # Reuse/Adapt
             target_words=SectionPlanner._calculate_target_words(4.0, "LITERATURE"),
             section_type="LITERATURE",
             section_index="2.0",
@@ -168,7 +169,7 @@ class SectionPlanner:
             title="Chapter 3: System Analysis",
             description="Feasibility and requirements analysis.",
             required_data=[],
-            template_key="gap_analysis", # Reuse analysis logic
+            template_key="draft_skeleton", # Reuse analysis logic
             target_words=SectionPlanner._calculate_target_words(3.0, "ANALYSIS"),
             section_type="ANALYSIS",
             section_index="3.0",
@@ -192,7 +193,7 @@ class SectionPlanner:
             title="Chapter 4: Methodology",
             description="Algorithms and modular decomposition.",
             required_data=[],
-            template_key="default_chapter",
+            template_key="draft_skeleton",
             target_words=SectionPlanner._calculate_target_words(4.0, "METHODOLOGY"),
             section_type="METHODOLOGY",
             section_index="4.0",
@@ -213,7 +214,7 @@ class SectionPlanner:
             title="Chapter 5: System Design",
             description="UML diagrams and architectural design.",
             required_data=[],
-            template_key="default_chapter",
+            template_key="draft_skeleton",
             target_words=SectionPlanner._calculate_target_words(3.0, "DESIGN"),
             section_type="DESIGN",
             section_index="5.0",
@@ -234,7 +235,7 @@ class SectionPlanner:
             title="Chapter 6: System Implementation",
             description="Details of the development process.",
             required_data=[],
-            template_key="default_chapter",
+            template_key="draft_skeleton",
             target_words=SectionPlanner._calculate_target_words(5.0, "IMPLEMENTATION"),
             section_type="IMPLEMENTATION",
             section_index="6.0",
@@ -254,7 +255,7 @@ class SectionPlanner:
             title="Chapter 7: System Testing",
             description="Testing strategies and summary.",
             required_data=[],
-            template_key="default_chapter",
+            template_key="draft_skeleton",
             target_words=SectionPlanner._calculate_target_words(2.0, "TESTING"),
             section_type="TESTING",
             section_index="7.0",
@@ -272,7 +273,7 @@ class SectionPlanner:
             title="Chapter 8: Results",
             description="Performance analysis and metrics.",
             required_data=["concept_trends"], # Use trends as proxy for results if available
-            template_key="trend_analysis",
+            template_key="draft_skeleton",
             target_words=SectionPlanner._calculate_target_words(2.0, "RESULTS"),
             section_type="RESULTS",
             section_index="8.0",
@@ -290,7 +291,7 @@ class SectionPlanner:
             title="Chapter 9: Conclusion",
             description="Summary of achievements.",
             required_data=[],
-            template_key="default_chapter",
+            template_key="draft_skeleton",
             target_words=SectionPlanner._calculate_target_words(1.0, "CONCLUSION"),
             section_type="CONCLUSION",
             section_index="9.0",
@@ -304,7 +305,7 @@ class SectionPlanner:
             title="Chapter 10: Future Scope",
             description="Future enhancements.",
             required_data=[],
-            template_key="default_chapter",
+            template_key="draft_skeleton",
             target_words=SectionPlanner._calculate_target_words(1.0, "CONCLUSION"),
             section_type="CONCLUSION",
             section_index="10.0",
@@ -331,10 +332,10 @@ class SectionPlanner:
     @staticmethod
     def get_template_key(state: Dict[str, Any], section_id: str) -> Optional[str]:
         # Simple lookup fallback
-        if section_id.startswith("chapter_"): return "default_chapter"
-        if section_id == "abstract": return "executive_summary"
+        if section_id.startswith("chapter_"): return "draft_skeleton"
+        if section_id == "abstract": return "abstract_generation"
         if section_id == "appendix": return "deterministic_appendix"
-        return "default_chapter"
+        return "draft_skeleton"
 
     @staticmethod
     def initialize_report_state(state: Dict[str, Any]) -> ReportState:

@@ -65,6 +65,9 @@ else:
     # Production origins from environment variable
     origins_str = os.getenv("ALLOWED_ORIGINS", "")
     origins = [origin.strip() for origin in origins_str.split(",") if origin.strip()]
+
+    if not origins:
+        logger.warning("⚠️ ALLOWED_ORIGINS is empty in production - CORS will block all requests")
     
     app.add_middleware(
         CORSMiddleware,
