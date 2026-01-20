@@ -20,6 +20,10 @@ export function middleware(request: NextRequest) {
     // Check for auth token
     const token = request.cookies.get("vra_auth_token")?.value;
 
+    console.log(
+        `[Middleware] Path: ${path} | Token: ${token ? "FOUND" : "MISSING"}`,
+    );
+
     // NOTE: We only check for the *presence* of the token here for efficient client-side routing.
     // Full cryptographic verification (signature, expiry, revocation) is performed by the backend API
     // on every protected request. This split architecture ensures the Edge middleware stays fast

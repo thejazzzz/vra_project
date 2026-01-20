@@ -128,7 +128,8 @@ async def process_research_task(query: str, include_paper_ids: Optional[List[str
         # --------------------------------------------
         # 1. Fetch merged papers
         # --------------------------------------------
-        external_papers = await data_acquisition_agent.run(query, limit=20)
+        # USER REQUEST: Increased limit from 20 to 50 to avoid "Scope Limited" without manual uploads.
+        external_papers = await data_acquisition_agent.run(query, limit=50)
         
         # Combine (Local papers first to ensure they aren't lost)
         papers = included_papers + external_papers

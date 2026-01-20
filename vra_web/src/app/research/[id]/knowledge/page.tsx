@@ -340,7 +340,7 @@ export default function KnowledgeGraphPage() {
                                         <Info className="h-3 w-3 inline mr-1" />
                                         Evidence Context
                                     </h4>
-                                    <div className="max-h-60 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/40">
+                                    <div className="mt-2">
                                         {contextLoading ? (
                                             <div className="text-center py-2">
                                                 Loading context...

@@ -118,7 +118,32 @@ const setupInterceptors = (instance: AxiosInstance) => {
     );
 };
 
+// Inject Authorization Header from LocalStorage (Fallback for Localhost Cookie issues)
+const injectToken = (instance: AxiosInstance) => {
+    instance.interceptors.request.use(
+        (config) => {
+            if (typeof window !== "undefined") {
+                const token =
+                    localStorage.getItem("vra_auth_token") ||
+                    // Fallback to reading cookie manually if localstorage missing
+                    document.cookie
+                        .split("; ")
+                        .find((row) => row.startsWith("vra_auth_token="))
+                        ?.split("=")[1];
+
+                if (token && !config.headers["Authorization"]) {
+                    config.headers["Authorization"] = `Bearer ${token}`;
+                }
+            }
+            return config;
+        },
+        (error) => Promise.reject(error),
+    );
+};
+
 // Apply logic to both
+injectToken(defaultApi);
+injectToken(longRunningApi);
 setupInterceptors(defaultApi);
 setupInterceptors(longRunningApi);
 

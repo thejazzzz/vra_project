@@ -35,8 +35,13 @@ export default function LoginPage() {
         }
 
         try {
-            await authApi.login(email);
-            // localStorage.setItem("vra_auth_token", response.access_token); // Removed for HttpOnly Cookie
+            const response = await authApi.login(email);
+            if (response.access_token) {
+                // Manual Cookie Stamping to fix Localhost Middleware visibility issues
+                document.cookie = `vra_auth_token=${response.access_token}; path=/; max-age=3600; samesite=Lax`;
+                // Redundancy: Store in LocalStorage for API Client Interceptor
+                localStorage.setItem("vra_auth_token", response.access_token);
+            }
             router.push("/dashboard"); // Redirect to dashboard
         } catch (err: any) {
             console.error("Login failed", err);

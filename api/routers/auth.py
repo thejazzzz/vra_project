@@ -129,7 +129,7 @@ async def login(response: Response, request: LoginRequest, db: Session = Depends
     # So path is /auth/login, /auth/refresh.
     # So path="/auth/refresh" is correct.
 
-    return {"message": "Login successful", "user": {"id": user.id, "email": user.email}} 
+    return {"message": "Login successful", "user": {"id": user.id, "email": user.email}, "access_token": access_token} 
 
 @router.post("/auth/refresh")
 async def refresh_token(request: Request, response: Response, db: Session = Depends(get_db)):
