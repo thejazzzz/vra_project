@@ -7,6 +7,18 @@ from state.state_schema import ReportState, ReportSectionState
 from services.llm_service import generate_response
 from services.llm_factory import LLMProvider
 from services.reporting.prompts import PROMPT_TEMPLATES, SYSTEM_PROMPTS
+from enum import Enum
+import os
+
+class CostLimitExceededError(Exception):
+    """Raised when cloud call limit is reached."""
+    pass
+
+class CompilationPhase(Enum):
+    DRAFT = "DRAFTING"
+    EXPAND = "EXPANDING"
+    REFINE = "REFINING"
+    ABSTRACT = "ABSTRACT"
 
 logger = logging.getLogger(__name__)
 
@@ -23,22 +35,111 @@ class SectionCompiler:
 
     def __init__(self, state: Dict[str, Any]):
         self.state = state
-        # Dynamic Provider Resolution
-        import os
-        provider_env = os.getenv("REPORT_PROVIDER", "local").lower()
         
-        if provider_env == "openai":
-            self.provider = LLMProvider.OPENAI
-            self.model_name = os.getenv("OPENAI_MODEL", "gpt-4o")
-        elif provider_env == "openrouter":
-            self.provider = LLMProvider.OPENROUTER
-            self.model_name = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
-        elif provider_env == "azure":
-             self.provider = LLMProvider.AZURE
-             self.model_name = os.getenv("AZURE_DEPLOYMENT_NAME", "azure-gpt-4")
-        else:
-            self.provider = LLMProvider.LOCAL 
-            self.model_name = os.getenv("LOCAL_MODEL", "llama3:8b") 
+        # --- Hybrid Configuration ---
+        self.hybrid_mode = os.getenv("VRA_HYBRID_MODE", "false").lower() == "true"
+        
+        # Primary (High Quality)
+        self.primary_provider = self._parse_provider(os.getenv("PRIMARY_PROVIDER") or os.getenv("REPORT_PROVIDER") or "openai")
+        self.primary_model = os.getenv("PRIMARY_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4o"
+        
+        # Secondary (High Speed/Low Cost)
+        self.secondary_provider = self._parse_provider(os.getenv("SECONDARY_PROVIDER") or "local")
+        self.secondary_model = os.getenv("SECONDARY_MODEL") or os.getenv("LOCAL_MODEL") or "llama3:8b"
+        
+        # Safety
+        self.max_cloud_calls = int(os.getenv("MAX_CLOUD_CALLS", "15"))
+        
+        # Default State (Will be overridden by _resolve_provider)
+        self.provider = self.primary_provider
+        self.model_name = self.primary_model
+        
+    def _parse_provider(self, name: str) -> LLMProvider:
+        name = name.lower()
+        if name == "openai": return LLMProvider.OPENAI
+        if name == "azure": return LLMProvider.AZURE
+        if name == "openrouter": return LLMProvider.OPENROUTER
+        return LLMProvider.LOCAL
+
+    def _resolve_provider(self, phase: CompilationPhase, section_type: str = "") -> tuple[LLMProvider, str]:
+        """
+        Determines the best (Provider, Model) based on Phase, Logic, and Config.
+        """
+        # Rule 1: Abstract ALWAYS uses Primary (High Reasoning)
+        if phase == CompilationPhase.ABSTRACT:
+            return self.primary_provider, self.primary_model
+            
+        # Rule 2: If Hybrid is OFF, use Primary/Default for everything
+        if not self.hybrid_mode:
+            # Fallback to legacy behavior (Primary is set to REPORT_PROVIDER)
+            return self.primary_provider, self.primary_model
+            
+        # Rule 3: Hybrid Logic
+        if phase == CompilationPhase.REFINE:
+            return self.primary_provider, self.primary_model # High Polish
+            
+        if phase == CompilationPhase.EXPAND:
+            return self.secondary_provider, self.secondary_model # Bulk Volume
+            
+        if phase == CompilationPhase.DRAFT:
+            # Complex sections need reasoning
+            if section_type in ["INTRO", "CONCLUSION", "ANALYSIS", "LITERATURE"]:
+                 return self.primary_provider, self.primary_model
+            else:
+                 return self.secondary_provider, self.secondary_model # Method/Impl are structural
+                 
+        return self.primary_provider, self.primary_model
+
+    def _check_cost_guardrail(self, provider: LLMProvider):
+        """
+        Circuit breaker for cloud costs.
+        """
+        if provider != LLMProvider.LOCAL:
+            current_calls = self.state.get("metrics", {}).get("cloud_calls", 0)
+            if current_calls >= self.max_cloud_calls:
+                 logger.warning(f"Cost Guardrail: Max cloud calls ({self.max_cloud_calls}) exceeded.")
+                 raise CostLimitExceededError("Max cloud calls reached.")
+            
+            # Increment
+            if "metrics" not in self.state: self.state["metrics"] = {}
+            self.state["metrics"]["cloud_calls"] = current_calls + 1
+            
+    def _resolve_safe_provider(self, phase: CompilationPhase, section_type: str = "") -> tuple[LLMProvider, str]:
+        """
+        Resolves provider with fallback logic for cost/errors.
+        """
+        provider, model = self._resolve_provider(phase, section_type)
+        
+        try:
+            self._check_cost_guardrail(provider)
+            return provider, model
+        except CostLimitExceededError:
+            # Fallback to Secondary
+            fallback_provider = self.secondary_provider
+            fallback_model = self.secondary_model
+            
+            # Verify fallback isn't also costly (unless it's local, which is safe)
+            # If secondary is also paid, we might need a recursive check or hard stop.
+            # For now, we assume Secondary = Local or Cheap. 
+            # If Secondary != Local, we should check cost guardrail again? 
+            # If Max Cloud calls reached, we shouldn't use ANY cloud provider.
+            
+            if fallback_provider != LLMProvider.LOCAL:
+                 # Re-check guardrail. If we are already over limit, report must stop.
+                 try:
+                     self._check_cost_guardrail(fallback_provider)
+                 except CostLimitExceededError as e:
+                     raise CostLimitExceededError(
+                         f"Cost Limit Exceeded even with Fallback Provider ({fallback_provider}). Stopping report."
+                     ) from e
+
+            logger.warning(f"[Hybrid] Event=FALLBACK | Reason=COST_LIMIT | Phase={phase.value} | To={fallback_provider} ({fallback_model})")
+            
+            # Indicate in state
+            if "warnings" not in self.state: self.state["warnings"] = []
+            self.state["warnings"].append(f"Hybrid Fallback triggered for {phase.value} -> {fallback_model}")
+            
+            return fallback_provider, fallback_model 
 
     def compile(self, section: ReportSectionState) -> str:
         """
@@ -132,6 +233,73 @@ class SectionCompiler:
                 
         return "\n".join(anchors)
 
+    def _generate_with_fallback(self, prompt: str, system_prompt: str, phase: CompilationPhase, section_type: str = "", temperature: float = 0.3) -> str:
+        """
+        Robust generation wrapper:
+        1. Resolves provider safely (checking cost limits).
+        2. Tries generation.
+        3. On Primary Provider error, falls back to Secondary.
+        """
+        # 1. Resolve Provider (Handles Cost Limit Fallback internally)
+        provider, model_name = self._resolve_safe_provider(phase, section_type)
+        
+        try:
+             # 2. Attempt Generation
+             content = generate_response(
+                prompt,
+                temperature=temperature,
+                provider=provider,
+                model=model_name,
+                system_prompt=system_prompt
+             )
+             logger.info(f"[Hybrid] Phase={phase.value} | Provider={provider} | Model={model_name} | Status=SUCCESS")
+             return content
+             
+        except Exception as e:
+             # 3. Handle Provider Errors (Timeout, 500, etc)
+             is_primary = (provider == self.primary_provider) and (self.primary_provider != self.secondary_provider)
+             
+             if is_primary:
+                  logger.warning(f"[Hybrid] Event=FALLBACK | Reason=PROVIDER_ERROR | From={provider} | Error={str(e)}")
+                  
+                  # Switch to Secondary
+                  fallback_provider = self.secondary_provider
+                  fallback_model = self.secondary_model
+                  
+                  # Cost Check for Fallback? (Usually safe, but good to be sure if Secondary is not Local)
+                  # _resolve_safe_provider logic usually covers cost, but here we are runtime switching.
+                  # If Secondary is Local, it's free. If it's paid, we might hit limits, but we are in emergency fallback.
+                  # Let's assume Secondary is safe-ish or we accept the risk to finish the report.
+                  
+                  logger.info(f"[Hybrid] Retrying with Secondary: {fallback_provider} ({fallback_model})")
+                  
+                  # Enforce Cost Guardrail for Fallback Provider
+                  # Even if it's "secondary", if it's not LOCAL, we must check limits.
+                  if fallback_provider != LLMProvider.LOCAL:
+                      self._check_cost_guardrail(fallback_provider)
+                  
+                  try:
+                       content = generate_response(
+                            prompt,
+                            temperature=temperature,
+                            provider=fallback_provider,
+                            model=fallback_model,
+                            system_prompt=system_prompt
+                       )
+                       
+                       # Record Warning
+                       if "warnings" not in self.state: self.state["warnings"] = []
+                       self.state["warnings"].append(f"Fallback used for {phase.value} due to error: {str(e)}")
+                       
+                       return content
+                  except Exception as e2:
+                       logger.error(f"[Hybrid] Event=FALLBACK_FAILED | From={fallback_provider} | Error={str(e2)}")
+                       raise e2 # Rethrow secondary error
+             
+             else:
+                  # It was already Secondary or Local, just fail
+                  raise e
+
     def _draft_skeleton(self, section: ReportSectionState, context: str) -> str:
         system_prompt = SYSTEM_PROMPTS.get("draft")
         
@@ -146,12 +314,12 @@ class SectionCompiler:
             target_words=section['target_words']
         )
         
-        return generate_response(
-            prompt, 
-            temperature=0.3, 
-            provider=self.provider, 
-            model=self.model_name,
-            system_prompt=system_prompt
+        return self._generate_with_fallback(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            phase=CompilationPhase.DRAFT,
+            section_type=section['section_type'],
+            temperature=0.3
         )
 
     def _expand_content(self, current_text: str, anchors: str, section_type: str, section_target_words: int) -> str:
@@ -173,12 +341,12 @@ class SectionCompiler:
             section_type=section_type
         )
         
-        return generate_response(
-            prompt, 
-            temperature=0.4, 
-            provider=self.provider, 
-            model=self.model_name,
-            system_prompt=system_prompt
+        return self._generate_with_fallback(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            phase=CompilationPhase.EXPAND,
+            section_type=section_type,
+            temperature=0.4
         )
 
     def _refine_content(self, text: str, section_type: str) -> str:
@@ -189,12 +357,12 @@ class SectionCompiler:
             content=text
         )
         
-        return generate_response(
-            prompt, 
-            temperature=0.2, 
-            provider=self.provider, 
-            model=self.model_name,
-            system_prompt=system_prompt
+        return self._generate_with_fallback(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            phase=CompilationPhase.REFINE,
+            section_type=section_type,
+            temperature=0.2
         )
 
     def _repetition_score(self, old: str, new: str) -> float:
@@ -285,12 +453,12 @@ class SectionCompiler:
         
         # Single Pass - No expansion loop needed for abstract
         section["compilation_phase"] = "SYNTHESIZING"
-        abstract_content = generate_response(
-            prompt, 
-            temperature=0.3, # Low temp for factual adherence
-            provider=self.provider, 
-            model=self.model_name,
-            system_prompt=system_prompt
+
+        abstract_content = self._generate_with_fallback(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            phase=CompilationPhase.ABSTRACT,
+            temperature=0.3
         )
         
         section["compilation_phase"] = "COMPLETE"

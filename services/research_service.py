@@ -42,19 +42,37 @@ async def download_pdf(pdf_url: Optional[str]) -> str:
         return ""
 
     import aiohttp
+    import asyncio
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(pdf_url, timeout=10) as resp:
-                if resp.status != 200:
-                    logger.warning(f"PDF download failed ({resp.status}): {pdf_url}")
-                    return ""
-                pdf_bytes = await resp.read()
-    except Exception as e:
-        logger.warning(f"PDF request failed for {pdf_url}: {e}")
-        return ""
+    headers = {
+        "User-Agent": "VRA_Research_Assistant/1.0 (mailto:admin@example.com)",
+        "Accept": "application/pdf,application/x-download,*/*"
+    }
 
-    return await asyncio.to_thread(extract_text_from_pdf_bytes, pdf_bytes)
+    for attempt in range(3):
+        try:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                async with session.get(pdf_url, timeout=30) as resp:
+                    if resp.status == 200:
+                        pdf_bytes = await resp.read()
+                        return await asyncio.to_thread(extract_text_from_pdf_bytes, pdf_bytes)
+                    elif resp.status == 429:
+                        logger.warning(f"Rate limited (429) for {pdf_url}. Retrying in {2**attempt}s...")
+                        await asyncio.sleep(2**attempt)
+                        continue
+                    elif resp.status == 403:
+                        logger.warning(f"Access Forbidden (403) for {pdf_url}. Might be bot protection. Retrying...")
+                        await asyncio.sleep(2**attempt)
+                        continue
+                    else:
+                        logger.warning(f"PDF download failed ({resp.status}): {pdf_url}")
+                        return ""
+                        
+        except Exception as e:
+            logger.warning(f"PDF request failed for {pdf_url} (Attempt {attempt+1}): {e}")
+            await asyncio.sleep(2**attempt)
+
+    return ""
 
 
 # ------------------------------------------------------------
