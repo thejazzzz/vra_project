@@ -13,6 +13,8 @@ import { Search, Info, X, Check } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PaperLink } from "@/components/ui/paper-link";
 import { ScopeGuardBanner } from "@/components/scope-guard-banner";
+import { EpistemicBadge } from "@/components/epistemic-badge";
+import { TrendChip } from "@/components/trend-chip";
 import { useToast } from "@/components/ui/use-toast";
 
 // Dynamic import for Force Graph (Client Side Only)
@@ -49,7 +51,7 @@ export default function KnowledgeGraphPage() {
             // Increase link distance to spread out connected nodes
             fgRef.current.d3Force("link").distance(70);
         }
-    }, []);
+    }, [graphData]); // Re-run when graph data loads
 
     const [contextLoading, setContextLoading] = useState(false);
     const [contextSnippets, setContextSnippets] = useState<
@@ -101,6 +103,17 @@ export default function KnowledgeGraphPage() {
         fgRef.current?.zoom(4, 2000);
     };
 
+    const handleLinkClick = (link: any) => {
+        setSelectedNode({ ...link, type: "link" }); // Treat link as node for panel
+        // Center on link midpoint
+        if (link.source.x != null && link.target.x != null) {
+            const mx = (link.source.x + link.target.x) / 2;
+            const my = (link.source.y + link.target.y) / 2;
+            fgRef.current?.centerAt(mx, my, 1000);
+            fgRef.current?.zoom(4, 2000);
+        }
+    };
+
     const params = useParams();
     const id = useMemo(() => {
         const rawId = params?.id;
@@ -134,6 +147,12 @@ export default function KnowledgeGraphPage() {
             });
         }
     };
+
+    // Derived Selection State
+    const isLink = selectedNode?.type === "link";
+    const selectionLabel = isLink
+        ? `${selectedNode.source.label || selectedNode.source.id} → ${selectedNode.target.label || selectedNode.target.id}`
+        : selectedNode?.label || selectedNode?.id;
 
     return (
         <div className="flex flex-col h-[calc(100vh-10rem)] gap-4 animate-in fade-in">
@@ -211,6 +230,7 @@ export default function KnowledgeGraphPage() {
                         linkDirectionalArrowRelPos={1}
                         backgroundColor="#09090b" // zinc-950
                         onNodeClick={handleNodeClick}
+                        onLinkClick={handleLinkClick}
                         cooldownTicks={100}
                         nodeCanvasObject={(node: any, ctx, globalScale) => {
                             const label = node.label || node.id;
@@ -265,8 +285,11 @@ export default function KnowledgeGraphPage() {
                     }`}
                 >
                     <div className="p-4 flex items-center justify-between border-b">
-                        <h2 className="font-bold truncate pr-2">
-                            {selectedNode?.label || selectedNode?.id}
+                        <h2
+                            className="font-bold truncate pr-2"
+                            title={selectionLabel}
+                        >
+                            {selectionLabel}
                         </h2>
                         <Button
                             variant="ghost"
@@ -278,85 +301,111 @@ export default function KnowledgeGraphPage() {
                     </div>
                     <ScrollArea className="flex-1 p-4">
                         <div className="space-y-4">
-                            <div className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-                                {selectedNode?.type || "Entity"}
-                            </div>
-                            <div className="space-y-2">
-                                <div className="flex justify-between text-sm py-2 border-b">
-                                    <span className="text-muted-foreground">
-                                        Mentions
-                                    </span>
-                                    <span className="font-medium">
-                                        {selectedNode?.paper_count || 1} Papers
-                                    </span>
+                            <div className="flex items-center justify-between">
+                                <div className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+                                    {selectedNode?.type || "Entity"}
                                 </div>
-                            </div>
-                            <div className="bg-secondary/50 p-3 rounded-lg text-xs text-muted-foreground">
-                                <h4 className="font-semibold mb-2 flex items-center">
-                                    <Info className="h-3 w-3 inline mr-1" />
-                                    Evidence Context
-                                </h4>
-                                <div className="max-h-60 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/40">
-                                    {contextLoading ? (
-                                        <div className="text-center py-2">
-                                            Loading context...
-                                        </div>
-                                    ) : contextSnippets.length > 0 ? (
-                                        <ul className="space-y-3">
-                                            {contextSnippets.map((snip, i) => (
-                                                <li
-                                                    key={i}
-                                                    className="leading-snug bg-background/50 p-2 rounded border border-border/50"
-                                                >
-                                                    <p className="italic mb-1">
-                                                        "
-                                                        {snip.document.slice(
-                                                            0,
-                                                            150,
-                                                        )}
-                                                        ..."
-                                                    </p>
-                                                    {/* PROVENANCE FIX: Attribute Source */}
-                                                    {snip.metadata
-                                                        ?.canonical_id ? (
-                                                        <div className="flex justify-end mt-1">
-                                                            <PaperLink
-                                                                paperId={
-                                                                    snip
-                                                                        .metadata
-                                                                        .canonical_id
-                                                                }
-                                                                variant="inline"
-                                                                className="text-[10px]"
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <span className="flex justify-end text-[10px] text-muted-foreground mt-1">
-                                                            — System Context
-                                                        </span>
-                                                    )}
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p>
-                                            No direct context found in papers.
-                                        </p>
+                                {/* Trend Chip for Concepts */}
+                                {selectedNode?.type === "concept" &&
+                                    selectedNode.trend_state && (
+                                        <TrendChip
+                                            status={selectedNode.trend_state}
+                                        />
                                     )}
+                            </div>
 
-                                    {/* FALSE AUTHORITY BADGE */}
-                                    <div className="mt-4 pt-3 border-t border-border/50">
-                                        <div className="text-[10px] text-muted-foreground flex gap-2 items-start bg-yellow-500/10 p-2 rounded">
-                                            <Info className="h-3 w-3 shrink-0 translate-y-0.5 text-yellow-500" />
-                                            <span>
-                                                Context snippets represent
-                                                retrieved evidence, not system
-                                                facts.
-                                            </span>
+                            {/* Epistemic Badges (Both Nodes and Links) */}
+                            <EpistemicBadge
+                                type={isLink ? "link" : "node"}
+                                data={selectedNode}
+                            />
+
+                            {!isLink && (
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-sm py-2 border-b">
+                                        <span className="text-muted-foreground">
+                                            Mentions
+                                        </span>
+                                        <span className="font-medium">
+                                            {selectedNode?.paper_count || 1}{" "}
+                                            Papers
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!isLink && (
+                                <div className="bg-secondary/50 p-3 rounded-lg text-xs text-muted-foreground">
+                                    <h4 className="font-semibold mb-2 flex items-center">
+                                        <Info className="h-3 w-3 inline mr-1" />
+                                        Evidence Context
+                                    </h4>
+                                    <div className="max-h-60 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/40">
+                                        {contextLoading ? (
+                                            <div className="text-center py-2">
+                                                Loading context...
+                                            </div>
+                                        ) : contextSnippets.length > 0 ? (
+                                            <ul className="space-y-3">
+                                                {contextSnippets.map(
+                                                    (snip, i) => (
+                                                        <li
+                                                            key={i}
+                                                            className="leading-snug bg-background/50 p-2 rounded border border-border/50"
+                                                        >
+                                                            <p className="italic mb-1">
+                                                                "
+                                                                {snip.document.slice(
+                                                                    0,
+                                                                    150,
+                                                                )}
+                                                                ..."
+                                                            </p>
+                                                            {/* PROVENANCE FIX: Attribute Source */}
+                                                            {snip.metadata
+                                                                ?.canonical_id ? (
+                                                                <div className="flex justify-end mt-1">
+                                                                    <PaperLink
+                                                                        paperId={
+                                                                            snip
+                                                                                .metadata
+                                                                                .canonical_id
+                                                                        }
+                                                                        variant="inline"
+                                                                        className="text-[10px]"
+                                                                    />
+                                                                </div>
+                                                            ) : (
+                                                                <span className="flex justify-end text-[10px] text-muted-foreground mt-1">
+                                                                    — System
+                                                                    Context
+                                                                </span>
+                                                            )}
+                                                        </li>
+                                                    ),
+                                                )}
+                                            </ul>
+                                        ) : (
+                                            <p>
+                                                No direct context found in
+                                                papers.
+                                            </p>
+                                        )}
+
+                                        {/* FALSE AUTHORITY BADGE */}
+                                        <div className="mt-4 pt-3 border-t border-border/50">
+                                            <div className="text-[10px] text-muted-foreground flex gap-2 items-start bg-yellow-500/10 p-2 rounded">
+                                                <Info className="h-3 w-3 shrink-0 translate-y-0.5 text-yellow-500" />
+                                                <span>
+                                                    Context snippets represent
+                                                    retrieved evidence, not
+                                                    system facts.
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </ScrollArea>
                 </Card>

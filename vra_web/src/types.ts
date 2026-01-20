@@ -254,6 +254,7 @@ export interface GraphLink {
     contested_count?: number;
     weighted_frequency?: number;
     evidence_count?: number;
+    novelty_score?: number;
     [key: string]: any;
 }
 
