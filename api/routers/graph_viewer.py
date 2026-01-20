@@ -204,7 +204,8 @@ def get_graph_data(query: str, current_user: User = Depends(get_current_user)):
         "nodes": graphs["knowledge_graph"].get("nodes", []),
         "edges": graphs["knowledge_graph"].get("links", []),
         "citation_nodes": graphs["citation_graph"].get("nodes", []),
-        "citation_links": graphs["citation_graph"].get("links", [])
+        "citation_links": graphs["citation_graph"].get("links", []),
+        "analytics": graphs.get("research_analytics", {})
     }
 
 

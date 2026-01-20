@@ -97,7 +97,8 @@ export interface ResearchState {
     selectedPapers: Paper[];
 
     // Graphs & Analysis
-    knowledgeGraph: { nodes: any[]; links: any[] };
+    knowledgeGraph: { nodes: GraphNode[]; links: GraphLink[]; graph?: any };
+
     authorGraph: {
         nodes: any[];
         links: any[];
@@ -205,8 +206,10 @@ export interface BackendResearchState {
             [key: string]: any;
         };
     };
-    knowledge_graph: { nodes: any[]; links: any[] };
+    knowledge_graph: { nodes: GraphNode[]; links: GraphLink[]; graph?: any };
+
     draft_report: string;
+    report_state?: ReportState; // Added logic from merged interface
     user_feedback?: string;
 }
 
@@ -225,6 +228,33 @@ export interface ReviewResponse {
 
 export interface GraphReviewResponse {
     state: BackendResearchState;
+}
+
+// Phase 4: Research-Grade Graph Types
+export interface GraphNode {
+    id: string;
+    label: string;
+    type: string;
+    trend_state?: "emerging" | "stable" | "declining" | "reemerging";
+    run_count?: number;
+    weighted_frequency?: number;
+    manual?: boolean;
+    [key: string]: any;
+}
+
+export interface GraphLink {
+    source: string;
+    target: string;
+    relation: string;
+    confidence: number;
+    is_hypothesis: boolean;
+    is_manual: boolean;
+    causal_strength?: "strong" | "weak" | "associative" | "causal";
+    trend_state?: string;
+    contested_count?: number;
+    weighted_frequency?: number;
+    evidence_count?: number;
+    [key: string]: any;
 }
 
 export interface LoginRequest {
@@ -308,28 +338,4 @@ export interface ResetSectionRequest {
 }
 
 // Update BackendResearchState to include report_state
-export interface BackendResearchState {
-    query: string;
-    audience: string;
-    current_step: string;
-    collected_papers: any[];
-    selected_papers: any[];
-    global_analysis: any;
-    research_gaps: any[];
-    concept_trends: Record<string, TrendMetrics>;
-    hypotheses?: any[];
-    reviews?: any[];
-    author_graph: {
-        nodes: any[];
-        links: any[];
-        meta?: {
-            edges_present: boolean;
-            metrics_valid: boolean;
-            [key: string]: any;
-        };
-    };
-    knowledge_graph: { nodes: any[]; links: any[] };
-    draft_report: string;
-    report_state?: ReportState; // Added
-    user_feedback?: string;
-}
+// (Merged into main declaration above to avoid duplicates)

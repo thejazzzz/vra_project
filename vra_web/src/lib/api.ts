@@ -89,7 +89,7 @@ const setupInterceptors = (instance: AxiosInstance) => {
                         {
                             // @ts-ignore - custom config property
                             skipAuthRefresh: true,
-                        }
+                        },
                     );
 
                     // If successful, retry the queued requests
@@ -114,7 +114,7 @@ const setupInterceptors = (instance: AxiosInstance) => {
             }
 
             return Promise.reject(error);
-        }
+        },
     );
 };
 
@@ -144,7 +144,7 @@ export const plannerApi = {
     plan: (
         query: string,
         include_paper_ids: string[] = [],
-        audience: string = "industry"
+        audience: string = "industry",
     ): Promise<PlanResponse> =>
         longRunningApi // HEAVY
             .post<PlanResponse>("/planner/plan", {
@@ -172,7 +172,7 @@ export const plannerApi = {
     continue: (sessionId: string): Promise<StatusResponse> =>
         defaultApi // Usually fast status update
             .post<StatusResponse>(
-                `/planner/continue/${encodeURIComponent(sessionId)}`
+                `/planner/continue/${encodeURIComponent(sessionId)}`,
             )
             .then((res) => res.data),
 
@@ -211,6 +211,14 @@ export const graphApi = {
                 metadata: { canonical_id: string };
             }>;
         }>(`/graph-viewer/context/${encodeURIComponent(concept)}`),
+
+    // Phase 4: Approval Gate
+    approve: async (query: string, userId: string) =>
+        defaultApi
+            .post(`/graphs/${encodeURIComponent(query)}/approve`, {
+                user_id: userId,
+            })
+            .then((res) => res.data),
 };
 
 // Reporting: Mixed
@@ -237,7 +245,7 @@ export const reportingApi = {
                 `/reporting/section/${encodeURIComponent(sectionId)}/generate`,
                 {
                     session_id: sessionId,
-                }
+                },
             )
             .then((res) => res.data.section),
 
@@ -248,7 +256,7 @@ export const reportingApi = {
         payload: {
             accepted: boolean;
             feedback?: string;
-        }
+        },
     ) =>
         defaultApi
             .post(
@@ -256,7 +264,7 @@ export const reportingApi = {
                 {
                     session_id: sessionId,
                     ...payload,
-                }
+                },
             )
             .then((res) => res.data.section),
 
@@ -264,7 +272,7 @@ export const reportingApi = {
     resetSection: (
         sessionId: string,
         sectionId: string,
-        force: boolean = false
+        force: boolean = false,
     ) =>
         defaultApi
             .post(`/reporting/section/${encodeURIComponent(sectionId)}/reset`, {
@@ -293,7 +301,7 @@ export const reportingApi = {
                 },
                 {
                     responseType: "blob", // Important for binary downloads
-                }
+                },
             )
             .then((res) => res.data),
 };

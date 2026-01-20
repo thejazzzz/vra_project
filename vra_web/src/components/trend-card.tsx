@@ -11,6 +11,7 @@ import {
     CardFooter,
 } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
+import { Badge } from "@/components/ui/badge";
 import {
     ResponsiveContainer,
     BarChart,
@@ -37,7 +38,6 @@ import {
 } from "lucide-react";
 import { TrendMetrics } from "@/types";
 import { PaperLink } from "@/components/ui/paper-link";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
     Tooltip as UITooltip,
@@ -45,6 +45,34 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+// Phase 5: Trend Chip Logic
+const TrendChip = ({ status }: { status: string }) => {
+    const s = status?.toLowerCase() || "unknown";
+    if (s === "reemerging") {
+        return (
+            <Badge className="bg-orange-500 hover:bg-orange-600 border-none text-white">
+                RE-EMERGING
+            </Badge>
+        );
+    }
+    if (s === "stable") {
+        return (
+            <Badge className="bg-blue-500 hover:bg-blue-600 border-none text-white">
+                STABLE
+            </Badge>
+        );
+    }
+    if (s === "declining") {
+        return (
+            <Badge variant="secondary" className="text-muted-foreground">
+                DECLINING
+            </Badge>
+        );
+    }
+    // Default / Emerging
+    return <StatusBadge status={status} />;
+};
 
 interface TrendCardProps {
     concept: string;
@@ -142,7 +170,7 @@ export function TrendCard({ concept, data }: TrendCardProps) {
     const paperIds = useMemo(() => {
         const ids = new Set<string>();
         data.trend_vector?.forEach((tv) =>
-            tv.paper_ids?.forEach((id) => ids.add(id))
+            tv.paper_ids?.forEach((id) => ids.add(id)),
         );
         return Array.from(ids);
     }, [data.trend_vector]);
@@ -192,14 +220,14 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                                         {data.stability === "Volatile"
                                             ? "High variance in normalized frequency"
                                             : data.stability === "Stable"
-                                            ? "Consistent frequency over time"
-                                            : "Based on NCF variance analysis"}
+                                              ? "Consistent frequency over time"
+                                              : "Based on NCF variance analysis"}
                                     </TooltipContent>
                                 </UITooltip>
                             </TooltipProvider>
                         </CardDescription>
                     </div>
-                    <StatusBadge status={data.status} />
+                    <TrendChip status={data.status} />
                 </div>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
@@ -271,9 +299,9 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                                                         : "Count"}
                                                     :{" "}
                                                     {Number(
-                                                        payload[0].value
+                                                        payload[0].value,
                                                     ).toFixed(
-                                                        useNormFreq ? 3 : 0
+                                                        useNormFreq ? 3 : 0,
                                                     )}
                                                 </p>
                                                 {/* DATA EXPOSURE: Top Related Concepts */}
@@ -289,7 +317,7 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                                                                     .slice(0, 3)
                                                                     .map(
                                                                         (
-                                                                            c: string
+                                                                            c: string,
                                                                         ) => (
                                                                             <span
                                                                                 key={
@@ -301,7 +329,7 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                                                                                     c
                                                                                 }
                                                                             </span>
-                                                                        )
+                                                                        ),
                                                                     )}
                                                             </div>
                                                         </div>

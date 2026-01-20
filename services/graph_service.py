@@ -4,6 +4,10 @@ from typing import Dict, List, Any, Optional
 
 import networkx as nx
 from networkx.readwrite import json_graph
+import re
+
+from services.graph_persistence_service import load_graphs, save_graphs
+from services.graph_analytics_service import GraphAnalyticsService
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +39,94 @@ def build_knowledge_graph(
     paper_relations: Optional[Dict[str, List[Dict]]] = None,
     paper_concepts: Optional[Dict[str, List[str]]] = None,
     global_analysis: Optional[Dict[str, Any]] = None,
+    run_meta: Optional[Dict[str, Any]] = None,
+    overrides: Optional[List[Dict]] = None # Phase 3: User Feedback
 ) -> Dict:
     """
     Build a semantic Knowledge Graph (KG) with Verification & Confidence Scoring.
     Phase 1 Enhanced: Logically verified, evidence-backed graph construction.
+    Phase 3: Added Run-Level Provenance & User Overrides.
     """
-    G = nx.DiGraph()
+    G = nx.MultiDiGraph() # Changed to MultiDiGraph to support conflicting edges (research-grade)
+    if run_meta:
+        G.graph["meta"] = run_meta
+
+    # -----------------------------
+    # Helper: Canonicalization (Methodological Requirement)
+    # -----------------------------
+    def canonical_concept_id(text: str) -> str:
+        """
+        Research-Grade Canonicalization.
+        Prevents 'Self Attention' vs 'self-attention' fragmentation.
+        """
+        if not text: return ""
+        # Improved Normalization: strip, lower, hyphen/underscore replacement, and regex whitespace collapse
+        text = text.strip().lower().replace("-", " ").replace("_", " ")
+        return re.sub(r'\s+', ' ', text)
+
+    # Helpers for Overrides
+    reject_set = set()
+    confirm_set = set()
+    
+    if overrides:
+        for o in overrides:
+            # Defensively check inputs
+            src_raw = o.get("source")
+            tgt_raw = o.get("target")
+            
+            if not src_raw or not tgt_raw:
+                logger.warning(f"Skipping malformed override entry: {o}")
+                continue
+                
+            s, t = canonical_concept_id(src_raw), canonical_concept_id(tgt_raw)
+            act = o.get("action")
+            
+            if act == "reject_edge":
+                reject_set.add((s, t))
+            elif act == "confirm_edge":
+                confirm_set.add((s, t))
+            elif act == "add_edge":
+                # Priority 4: Manual Additions
+                # We add them logic-free here (they skip aggregation verification)
+                # But we must ensure nodes exist
+                rel = o.get("relation", "related_to")
+                
+                if s not in G: G.add_node(s, label=src_raw, type="concept", manual=True)
+                if t not in G: G.add_node(t, label=tgt_raw, type="concept", manual=True)
+                
+                # Get props
+                props = get_relation_props(rel)
+                
+                # Add confident edge
+                G.add_edge(
+                    s, t,
+                    relation=props.label,
+                    original_relation=rel,
+                    polarity=props.polarity,
+                    causal_strength=props.strength.value,
+                    confidence=1.0, # Human = Truth
+                    evidence_count=1,
+                    evidence=[{"source": "user_override", "user_id": run_meta.get("user_id", "unknown") if run_meta else "user"}],
+                    is_hypothesis=False,
+                    is_manual=True
+                )
 
     # Intermediate storage for edge aggregation: (source, target, relation_type) -> List[evidence]
     aggregated_edges: Dict[tuple, List[Dict]] = {}
-
+    
     # Helper to add to aggregation
     def _add_relation_candidate(src, tgt, rel_type, evidence_item):
-        key = (src.strip().lower(), tgt.strip().lower(), rel_type.strip().lower())
+        s_canon = canonical_concept_id(src)
+        t_canon = canonical_concept_id(tgt)
+        if not s_canon or not t_canon: return
+        
+        # User Feedback Check: Global REJECT (Optimization)
+        if (s_canon, t_canon) in reject_set:
+            return 
+
+        # Key is STRICTLY directional now, but relies on canonical IDs
+        key = (s_canon, t_canon, rel_type.strip().lower())
+        
         if key not in aggregated_edges:
             aggregated_edges[key] = []
         aggregated_edges[key].append(evidence_item)
@@ -61,17 +140,17 @@ def build_knowledge_graph(
             if isinstance(node, dict):
                 node_id = node.get("id")
                 if node_id:
-                    norm_id = node_id.strip().lower()
-                    G.add_node(norm_id, label=node_id, type=node.get("type", "concept"))
+                    canon_id = canonical_concept_id(node_id)
+                    G.add_node(canon_id, label=node_id, type=node.get("type", "concept"))
             else:
                 s_node = str(node).strip()
-                G.add_node(s_node.lower(), label=s_node, type="concept")
+                G.add_node(canonical_concept_id(s_node), label=s_node, type="concept")
 
         # relations
         for rel in global_analysis.get("relations", []):
             if rel.get("source") and rel.get("target"):
                 _add_relation_candidate(
-                    rel["source"], 
+                    rel["source"],
                     rel["target"], 
                     rel.get("relation", "related_to"),
                     {"source": "global_analysis", "meta": rel.get("evidence")}
@@ -87,10 +166,11 @@ def build_knowledge_graph(
                 tgt = rel.get("target")
                 if src and tgt:
                     # Ensure nodes exist
-                    s_norm = src.strip().lower()
-                    t_norm = tgt.strip().lower()
-                    if s_norm not in G: G.add_node(s_norm, label=src, type="concept")
-                    if t_norm not in G: G.add_node(t_norm, label=tgt, type="concept")
+                    s_canon = canonical_concept_id(src)
+                    t_canon = canonical_concept_id(tgt)
+                    
+                    if s_canon not in G: G.add_node(s_canon, label=src, type="concept")
+                    if t_canon not in G: G.add_node(t_canon, label=tgt, type="concept")
 
                     _add_relation_candidate(
                         src, tgt, 
@@ -109,34 +189,44 @@ def build_knowledge_graph(
             if paper_id not in G:
                 G.add_node(paper_id, type="paper", label=paper_id)
             
-            for concept in concepts:
-                c_norm = concept.strip().lower()
-                if c_norm not in G: 
-                    G.add_node(c_norm, type="concept", label=concept)
+            for concept in set(concepts):  # Deduplicate
+                c_canon = canonical_concept_id(concept)
+                if c_canon not in G: 
+                    G.add_node(c_canon, type="concept", label=concept)
                 
                 # Direct Concept->Paper link (associative)
-                # We don't verify these the same way, they are definite "mentions"
-                G.add_edge(c_norm, paper_id, relation="appears_in", confidence=1.0, type="meta")
+                G.add_edge(c_canon, paper_id, relation="appears_in", confidence=1.0, type="meta")
 
     # -----------------------------
     # 4. Verification & Edge Construction
     # -----------------------------
+    confidence_calibration = {"0.0-0.3": 0, "0.3-0.6": 0, "0.6-1.0": 0}
+
     for (src, tgt, rel_raw), evidence_list in aggregated_edges.items():
         # Get Ontology Properties
         props = get_relation_props(rel_raw)
         
         # Calculate Confidence
-        # Base: 0.6 (LLM output is decent)
-        # Evidence Count: Number of distinct papers backing this
         unique_papers = set()
         for ev in evidence_list:
             if "paper_id" in ev: unique_papers.add(ev["paper_id"])
         
-        conf_score = calculate_confidence(0.6, len(unique_papers))
+        evidence_count = len(unique_papers)
+        conf_score = calculate_confidence(0.6, evidence_count)
         
-        # Flag Hypothesis
+        # User Feedback Check: CONFIRM -> Boost Confidence
+        if (src, tgt) in confirm_set:
+            conf_score = min(conf_score + 0.3, 1.0) # Bonus for user confirmation
+
+        # Calibration Tracking
+        if conf_score < 0.3: confidence_calibration["0.0-0.3"] += 1
+        elif conf_score < 0.6: confidence_calibration["0.3-0.6"] += 1
+        else: confidence_calibration["0.6-1.0"] += 1
+
+        # Research Flags
         is_hypothesis = conf_score < 0.45
-        
+        insufficient_evidence = evidence_count == 1 and conf_score < 0.5
+
         # Add Edge
         G.add_edge(
             src, tgt,
@@ -146,10 +236,30 @@ def build_knowledge_graph(
             causal_strength=props.strength.value,
             symmetric=props.symmetric,
             confidence=conf_score,
-            evidence_count=len(unique_papers),
-            evidence=evidence_list, # Store full evidence trail
-            is_hypothesis=is_hypothesis
+            evidence_count=evidence_count,
+            evidence=evidence_list,
+            is_hypothesis=is_hypothesis,
+            insufficient_evidence=insufficient_evidence
         )
+    
+    # Store calibration metadata in graph attributes for later analysis
+    G.graph["confidence_calibration"] = confidence_calibration
+
+    # -----------------------------
+    # Phase 4 Safety: Scope Verification
+    # -----------------------------
+    total_edges = G.number_of_edges()
+    
+    # Estimate Unique Papers (approximate from edges evidence or paper nodes)
+    # Better: Use the input `paper_relations` keys
+    total_papers = len(paper_relations) if paper_relations else 0
+    
+    # Rule: < 3 Papers OR < 5 Edges -> Insufficient
+    if total_papers < 3 or total_edges < 5:
+        G.graph["scope_limited"] = True
+        logger.warning(f"⚠️ Graph Scope Limited: {total_papers} papers, {total_edges} edges. Analytics will be refused.")
+    else:
+        G.graph["scope_limited"] = False
 
     # -----------------------------
     # 5. Frequency Annotation (Existing Logic Refined)
@@ -262,3 +372,30 @@ def enrich_knowledge_graph(kg_data: Dict, cg_data: Dict) -> Dict:
 
     logger.info("🔗 Cross-Graph: Enriched %d KG nodes", enriched)
     return json_graph.node_link_data(G_kg)
+
+
+def recompute_analytics_for_saved_graph(query: str, user_id: str):
+    """
+    Phase 2 Maintenance: Re-run analytics after a Manual Graph Edit.
+    Ensures 'conflicts', 'gaps', and 'novelty' reflect user changes.
+    """
+    data = load_graphs(query, user_id)
+    if not data or not data.get("knowledge_graph"):
+        logger.warning(f"No graph found for {query} to recompute analytics.")
+        return
+
+    logger.info(f"Recomputing analytics for {query}...")
+    kg_data = data["knowledge_graph"]
+    
+    # 1. Run Analytics
+    analytics_service = GraphAnalyticsService(kg_data)
+    new_analytics = analytics_service.analyze()
+    
+    # 2. Save Back
+    save_graphs(
+        query, user_id, 
+        kg_data, 
+        data.get("citation_graph", {}),
+        new_analytics
+    )
+    logger.info("✅ Analytics updated.")

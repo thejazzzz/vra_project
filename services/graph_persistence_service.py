@@ -5,7 +5,7 @@ from database.models.graph_model import Graph
 from typing import Optional, Dict
 
 
-def save_graphs(query: str, user_id: str, knowledge: dict, citation: dict):
+def save_graphs(query: str, user_id: str, knowledge: dict, citation: dict, analytics: Optional[dict] = None):
     """Insert or update the graphs for a user + query."""
     with SessionLocal() as db:
         try:
@@ -14,11 +14,13 @@ def save_graphs(query: str, user_id: str, knowledge: dict, citation: dict):
                 user_id=user_id,
                 knowledge_graph=knowledge,
                 citation_graph=citation,
+                research_analytics=analytics or {}
             ).on_conflict_do_update(
                 index_elements=["query", "user_id"],
                 set_={
                     "knowledge_graph": knowledge,
                     "citation_graph": citation,
+                    "research_analytics": analytics or {}
                 }
             )
 
@@ -43,4 +45,5 @@ def load_graphs(query: str, user_id: str) -> Optional[Dict]:
         return {
             "knowledge_graph": row.knowledge_graph,
             "citation_graph": row.citation_graph,
+            "research_analytics": row.research_analytics or {}
         }

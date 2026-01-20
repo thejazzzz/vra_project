@@ -4,6 +4,7 @@ from typing import Dict
 from services.graph_service import build_knowledge_graph, build_citation_graph, enrich_knowledge_graph
 from services.graph_persistence_service import save_graphs
 from services.author_graph_service import build_author_graph
+from services.graph_analytics_service import GraphAnalyticsService
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +36,26 @@ class GraphBuilderAgent:
         paper_concepts = state.get("paper_concepts") or {}
 
         # ----------------------------
+        # Phase 3: Run-Level Provenance
+        # ----------------------------
+        from uuid import uuid4
+        from datetime import datetime
+        
+        run_meta = {
+            "run_id": str(uuid4()),
+            "timestamp": datetime.utcnow().isoformat(),
+            "model_version": state.get("workflow_version", "v1.0"),
+            "prompt_hash": state.get("prompt_hash", "unknown"),
+        }
+
+        # ----------------------------
         # Build Knowledge Graph
         # ----------------------------
         kg = build_knowledge_graph(
             paper_relations=paper_relations,
             paper_concepts=paper_concepts,
-            global_analysis=global_analysis
+            global_analysis=global_analysis,
+            run_meta=run_meta
         )
 
         # ----------------------------
@@ -58,9 +73,27 @@ class GraphBuilderAgent:
             logger.error(f"Failed to enrich knowledge graph for query={query}: {e}")
             #Continue with the original graph rather than failing completely
 
+        # ----------------------------
+        # Phase 2: Research Analytics
+        # ----------------------------
+        try:
+            logger.info("Running Research Analytics (Conflicts, Gaps, Novelty)...")
+            analytics_service = GraphAnalyticsService(kg)
+            analytics_results = analytics_service.analyze()
+            state["research_analytics"] = analytics_results
+        except Exception as e:
+            logger.error(f"Research Analytics failed: {e}")
+            state["research_analytics"] = {"error": str(e)}
+
 
         try:
-            save_graphs(query, user_id, kg, citation_graph)
+            save_graphs(
+                query, 
+                user_id, 
+                kg, 
+                citation_graph, 
+                state.get("research_analytics")
+            )
         except Exception as e:
             logger.error(f"Failed to persist graphs for query={query}: {e}")
 

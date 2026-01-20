@@ -109,6 +109,9 @@ class VRAState(TypedDict, total=False):
     # Global structures
     knowledge_graph: Dict[str, Any]
     citation_graph: Dict[str, Any]
+    
+    # Phase 2: Research Analytics (New)
+    research_analytics: Dict[str, Any] # {conflicts, gaps, novelty, bias}
 
     # Report (Phase 3.2 Enhanced)
     draft_report: Optional[str] # Deprecated but kept for backward compatibility
