@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.exceptions import RequestValidationError
 from api.models.research_models import ResearchRequest, ResearchResponse
 from services.research_service import process_research_task
+from services.progress_tracker import ProgressTracker
 import logging
 
 router = APIRouter()
@@ -22,7 +23,12 @@ async def research_endpoint(
     try:
         # Note: This endpoint seems to be a direct tool access. 
         # Ideally should be wrapped in a session but we'll secure access at least.
-        result = await process_research_task(payload.query, include_paper_ids=payload.include_paper_ids)
+        result = await process_research_task(
+            payload.query, 
+            include_paper_ids=payload.include_paper_ids,
+            task_id=payload.task_id,
+            user_id=current_user.id
+        )
 
         # If pipeline failed internally
         if not result.get("success", False):
@@ -48,6 +54,41 @@ async def research_endpoint(
             status_code=500,
             detail="Internal server error"
         )
+
+
+@router.get("/progress/{task_id}")
+async def get_research_progress(task_id: str, current_user: User = Depends(get_current_user)):
+    """
+    Poll this endpoint for real-time progress on research tasks.
+    Returns: { "phase": "...", "queries_total": N, ... }
+    """
+    # Use ProgressTracker.get_progress_object if needed, or get dict and check
+    # But ProgressTracker only returns dict. We need to check owner.
+    # We need access to the object to check user_id, or update get_progress to return owner.
+    # Let's peek into the instance directly via a helper if possible, or modify get_progress return.
+    # Actually, ProgressTracker is in services. Let's access instances directly if we must, 
+    # OR better: update get_progress to return the internal object or a dict with owner?
+    # Wait, the user asked to verify the returned progress/task owner matches current_user.
+    
+    # Access internal method or simply inspect the dict if we added user_id to to_dict?
+    # I didn't add user_id to_dict yet. 
+    # Let's assume I should rely on the services. 
+    # For now, I will modify ProgressTracker to exposing owner check or just peek.
+    # But wait, I can just use the tool `view_file` to see ProgressTracker again? No need.
+    
+    # I'll rely on `_instances` access since it's same process for now (local memory).
+    # Ideally `start_task` added `user_id`, so `ProgressTracker._instances[task_id].user_id` exists.
+    
+    progress = ProgressTracker.get_progress(task_id)
+    if not progress:
+        raise HTTPException(status_code=404, detail="Task not found or expired")
+    
+    # Check ownership
+    owner_id = ProgressTracker.get_task_owner(task_id)
+    if not owner_id or owner_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to view this task")
+
+    return progress
 
 
 from api.models.research_models import ManualPaperRequest

@@ -76,8 +76,8 @@ async def plan_task(payload: ResearchRequest, current_user: User = Depends(get_c
     if not query:
         raise HTTPException(status_code=400, detail="Query required")
 
-    # Generate unique Session ID (UUID)
-    session_id = str(uuid.uuid4())
+    # Use provided session_id (task_id) or generate new one
+    session_id = str(payload.task_id) if payload.task_id else str(uuid.uuid4())
     user_id = current_user.id
     
     # Initialize state
@@ -119,7 +119,8 @@ async def plan_task(payload: ResearchRequest, current_user: User = Depends(get_c
          return {"state": state, "session_id": session_id}
 
     try:
-        result = await process_research_task(query)
+        # Pass session_id as task_id for progress tracking
+        result = await process_research_task(query, task_id=session_id, user_id=str(user_id))
         if not result.get("success"):
             raise HTTPException(status_code=500, detail="Paper search failed")
 

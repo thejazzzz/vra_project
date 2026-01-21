@@ -24,7 +24,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ChevronDown, ChevronUp, FileText, Plus } from "lucide-react";
+import {
+    Loader2,
+    ChevronDown,
+    ChevronUp,
+    FileText,
+    Plus,
+    Sparkles,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface PaperReviewDialogProps {
@@ -56,7 +63,7 @@ export function PaperReviewDialog({ query }: PaperReviewDialogProps) {
 
     const handleToggle = (id: string, checked: boolean) => {
         setSelectedIds((prev) =>
-            checked ? [...prev, id] : prev.filter((x) => x !== id)
+            checked ? [...prev, id] : prev.filter((x) => x !== id),
         );
     };
 
@@ -158,18 +165,18 @@ export function PaperReviewDialog({ query }: PaperReviewDialogProps) {
                                                         "flex flex-col bg-secondary/20 transition-all border-l-4",
                                                         selected
                                                             ? "border-l-primary"
-                                                            : "border-l-transparent"
+                                                            : "border-l-transparent",
                                                     )}
                                                 >
                                                     <div className="flex gap-4 p-4 items-start">
                                                         <Checkbox
                                                             checked={selected}
                                                             onCheckedChange={(
-                                                                c
+                                                                c,
                                                             ) =>
                                                                 handleToggle(
                                                                     pid,
-                                                                    c === true
+                                                                    c === true,
                                                                 )
                                                             }
                                                             className="mt-1"
@@ -204,23 +211,40 @@ export function PaperReviewDialog({ query }: PaperReviewDialogProps) {
                                                                 {paper.authors
                                                                     ?.slice(
                                                                         0,
-                                                                        3
+                                                                        3,
                                                                     )
                                                                     .join(
-                                                                        ", "
+                                                                        ", ",
                                                                     )}{" "}
                                                                 •{" "}
                                                                 {paper.year ||
                                                                     "N/A"}
                                                                 {paper.venue &&
                                                                     ` • ${paper.venue}`}
+                                                                {/* Expansion Badge */}
+                                                                {paper.origin ===
+                                                                    "query_expansion" &&
+                                                                    paper.source_query && (
+                                                                        <div className="flex items-center gap-1 mt-1 text-xs font-medium text-amber-500">
+                                                                            <Sparkles className="h-3 w-3" />
+                                                                            <span>
+                                                                                Expanded:
+                                                                                "
+                                                                                {
+                                                                                    paper.source_query
+                                                                                }
+
+                                                                                "
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
                                                             </div>
 
                                                             <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
                                                                 {paper.summary ||
                                                                     paper.abstract?.slice(
                                                                         0,
-                                                                        150
+                                                                        150,
                                                                     ) + "..." ||
                                                                     "No summary available."}
                                                             </p>

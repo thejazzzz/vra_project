@@ -6,6 +6,7 @@ class ResearchRequest(BaseModel):
     query: str
     audience: Literal["general", "phd", "industry", "rd"] = "general"
     include_paper_ids: list[str] = Field(default_factory=list)
+    task_id: Optional[str] = None
 
 
 class ResearchResponse(BaseModel):

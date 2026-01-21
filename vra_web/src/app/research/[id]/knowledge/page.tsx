@@ -2,14 +2,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useResearchStore } from "@/lib/store";
-import { graphApi } from "@/lib/api";
+import { graphApi, plannerApi } from "@/lib/api";
 import { useMemo, useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Info, X, Check } from "lucide-react";
+import { Search, Info, X, Check, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PaperLink } from "@/components/ui/paper-link";
 import { ScopeGuardBanner } from "@/components/scope-guard-banner";
@@ -23,7 +23,8 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 });
 
 export default function KnowledgeGraphPage() {
-    const { knowledgeGraph, query, currentStep } = useResearchStore();
+    const { knowledgeGraph, query, currentStep, syncState } =
+        useResearchStore();
     const { toast } = useToast();
 
     const [selectedNode, setSelectedNode] = useState<any>(null);
@@ -128,18 +129,25 @@ export default function KnowledgeGraphPage() {
         }
     }, [params?.id]);
 
+    const [isAdvancing, setIsAdvancing] = useState(false);
+
     const handleApprove = async () => {
         if (!id) return;
+        setIsAdvancing(true);
         try {
             // Phase 4: Validated Approval Trigger
             await graphApi.approve(id, "current-user"); // TODO: Use real user ID
+
+            // Trigger Workflow Continuation
+            await plannerApi.continue(id);
+
             toast({
                 title: "Graph Approved",
-                description:
-                    "This research run has been integrated into Global Memory.",
+                description: "Research continuing to Gap Analysis...",
             });
         } catch (error) {
             console.error("Failed to approve graph:", error);
+            setIsAdvancing(false); // Only reset on error
             toast({
                 title: "Approval Failed",
                 description: "Could not update global memory.",
@@ -155,7 +163,29 @@ export default function KnowledgeGraphPage() {
         : selectedNode?.label || selectedNode?.id;
 
     return (
-        <div className="flex flex-col h-[calc(100vh-10rem)] gap-4 animate-in fade-in">
+        <div className="flex flex-col h-[calc(100vh-10rem)] gap-4 animate-in fade-in relative">
+            {/* Loading Overlay */}
+            {isAdvancing && (
+                <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center text-center p-4">
+                    <div className="bg-card border shadow-xl p-8 rounded-xl max-w-md w-full space-y-4">
+                        <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
+                        <div className="space-y-2">
+                            <h3 className="font-semibold text-lg">
+                                Analyzing Research Gaps
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                                The system is now running deep analysis on the
+                                Knowledge Graph to find novel gaps and generate
+                                hypotheses.
+                            </p>
+                            <p className="text-xs text-muted-foreground pt-2 font-mono">
+                                Estimated time: 1-2 minutes
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Phase 5: Scope Guard Banner */}
             <ScopeGuardBanner graph={knowledgeGraph} />
 
@@ -182,23 +212,25 @@ export default function KnowledgeGraphPage() {
                         </div>
                     </div>
 
-                    {currentStep === "awaiting_graph_review" && (
-                        <div className="absolute bottom-4 right-4 z-10">
-                            <Card className="p-4 bg-background/90 backdrop-blur border-primary/30 flex flex-col gap-2 shadow-xl">
-                                <p className="text-sm font-semibold">
-                                    Review Graph Structure
-                                </p>
-                                <Button
-                                    onClick={handleApprove}
-                                    size="sm"
-                                    className="w-full"
-                                >
-                                    <Check className="mr-2 h-4 w-4" /> Approve &
-                                    Continue
-                                </Button>
-                            </Card>
-                        </div>
-                    )}
+                    {currentStep === "awaiting_graph_review" &&
+                        !isAdvancing && (
+                            <div className="absolute bottom-4 right-4 z-10">
+                                <Card className="p-4 bg-background/90 backdrop-blur border-primary/30 flex flex-col gap-2 shadow-xl">
+                                    <p className="text-sm font-semibold">
+                                        Review Graph Structure
+                                    </p>
+                                    <Button
+                                        onClick={handleApprove}
+                                        size="sm"
+                                        className="w-full"
+                                        disabled={isAdvancing}
+                                    >
+                                        <Check className="mr-2 h-4 w-4" />{" "}
+                                        Approve & Continue
+                                    </Button>
+                                </Card>
+                            </div>
+                        )}
 
                     <ForceGraph2D
                         ref={fgRef}

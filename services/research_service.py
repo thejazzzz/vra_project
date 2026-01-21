@@ -9,11 +9,15 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy.orm.attributes import flag_modified
 
 from agents.data_acquisition_agent import data_acquisition_agent
-from utils.id_normalization import build_canonical_id
+from utils.id_normalization import build_canonical_id, to_canonical_id
 from database.db import SessionLocal
 from database.models.paper_model import Paper
 from utils.sanitization import clean_text, is_nonempty_text
 from clients.chroma_client import get_client
+from services.llm_factory import LLMFactory, LLMProvider
+from services.progress_tracker import ProgressTracker, ResearchPhase
+import uuid
+
 
 logger = logging.getLogger(__name__)
 
@@ -76,14 +80,197 @@ async def download_pdf(pdf_url: Optional[str]) -> str:
 
 
 # ------------------------------------------------------------
+# HELPER: QUERY EXPANSION
+# ------------------------------------------------------------
+async def generate_sub_queries(query: str) -> List[str]:
+    """
+    Generates 3-6 semantic sub-queries using LLM to broaden research scope.
+    Tries OpenAI first, then OpenRouter as fallback.
+    """
+    system_prompt = (
+        "You are a Senior Research Assistant. Your task is to generate 3-6 specific, academic search queries "
+        "related to the user's topic to perform a comprehensive literature review.\n"
+        "Rules:\n"
+        "1. Queries must be broader or orthogonal to the main topic.\n"
+        "2. Avoid speculative or non-academic phrasing.\n"
+        "3. Return ONLY the queries, one per line.\n"
+        "4. Do not number the lines."
+    )
+
+    async def _try_generate(provider: str) -> List[str]:
+        try:
+            client = LLMFactory.get_client(provider)
+            model = LLMFactory.get_default_model(provider)
+            
+            response = await asyncio.to_thread(
+                client.chat.completions.create,
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Topic: {query}"}
+                ],
+                temperature=0.3
+            )
+            text = response.choices[0].message.content.strip()
+            return [q.strip() for q in text.split('\n') if q.strip()]
+        except Exception as e:
+            logger.warning(f"Query generation failed with {provider}: {e}")
+            raise e
+
+    # Attempt 1: Default/OpenAI
+    try:
+        queries = await _try_generate(LLMFactory.OPENAI)
+        return queries[:6]
+    except Exception:
+        pass
+
+    # Attempt 2: OpenRouter
+    try:
+        queries = await _try_generate(LLMFactory.OPENROUTER)
+        logger.info("Used OpenRouter fallback for query expansion.")
+        return queries[:6]
+    except Exception:
+        pass
+        
+    logger.error("All LLM providers failed for query expansion.")
+    return []
+
+# ------------------------------------------------------------
+# HELPER: SMART DEDUPLICATION
+# ------------------------------------------------------------
+def _smart_deduplicate(papers: List[Dict]) -> List[Dict]:
+    """
+    Deduplicates papers based on strict priority:
+    1. Semantic Scholar ID (s2)
+    2. DOI
+    3. Normalized Title + Year
+    
+    Re-assigns canonical_id and merges metadata.
+    """
+    # Map key -> Paper
+    # We will use a disjoint-set (union-find) style or simply iterative merging?
+    # Since we want to merge metadata, iterative is better.
+    
+    # 1. Build Index by Priority Keys
+    # We'll use a unique internal ID for each cluster of papers
+    
+    clusters: Dict[str, Dict] = {} # cluster_id -> merged_paper
+    
+    # Pointer maps to find cluster
+    s2_map: Dict[str, str] = {}
+    doi_map: Dict[str, str] = {}
+    title_map: Dict[str, str] = {}
+    
+    for p in papers:
+        # Extract Keys
+        meta = p.get("metadata", {})
+        
+        s2_id = p.get("paper_id") if p.get("source") == "semantic_scholar" else meta.get("paperId")
+        # Check externalIds for S2
+        if not s2_id and "externalIds" in meta:
+             s2_id = meta["externalIds"].get("CorpusId") # Sometimes S2 puts it here? No, paperId is main.
+       
+        doi = meta.get("doi") or meta.get("DOI")
+        if not doi and "externalIds" in meta:
+            doi = meta["externalIds"].get("DOI")
+            
+        # Title+Year Key
+        t = clean_text(p.get("title", "")).lower()
+        y = str(p.get("year") or p.get("publication_year") or "0000")
+        ty_key = f"{t}|{y}"
+        
+        # Determine strict canonical ID for this paper (local)
+        # We need to see if it matches any EXISTING cluster
+        cluster_id = None
+        
+        if s2_id and str(s2_id) in s2_map:
+            cluster_id = s2_map[str(s2_id)]
+        elif doi and str(doi) in doi_map:
+            cluster_id = doi_map[str(doi)]
+        elif ty_key in title_map:
+            cluster_id = title_map[ty_key]
+            
+        if not cluster_id:
+            # Create new cluster
+            cluster_id = str(uuid.uuid4())
+            clusters[cluster_id] = p
+        else:
+            # Merge into existing
+            existing = clusters[cluster_id]
+            
+            # Merge sources
+            srcs = set(existing.get("sources", [existing.get("source")]))
+            srcs.add(p.get("source"))
+            if p.get("sources"):
+                 srcs.update(p.get("sources"))
+            existing["sources"] = list(srcs)
+            
+            # Keep the "best" metadata (S2 > Arxiv)
+            if p.get("source") == "semantic_scholar" and existing.get("source") != "semantic_scholar":
+                # Upgrade to S2 base
+                # But keep description if S2 abstract is empty?
+                # data_merger_agent already handles logic, but let's be simple:
+                # Prefer S2 ID
+                existing["source"] = "semantic_scholar"
+                existing["paper_id"] = s2_id or p.get("paper_id")
+                existing.setdefault("metadata", {}).update(p.get("metadata", {}))
+            
+            # Merge abstracts (longest wins)
+            if len(p.get("summary", "")) > len(existing.get("summary", "")):
+                existing["summary"] = p.get("summary")
+            
+            clusters[cluster_id] = existing
+
+        # Update Maps
+        if s2_id: s2_map[str(s2_id)] = cluster_id
+        if doi: doi_map[str(doi)] = cluster_id
+        title_map[ty_key] = cluster_id
+        
+    # Re-generate Canonical IDs
+    final_list = []
+    for cid, p in clusters.items():
+        # Enforce Rule: S2 > DOI > Title
+        # Check keys in finalized object
+        meta = p.get("metadata", {})
+        s2_id = p.get("paper_id") if p.get("source") == "semantic_scholar" else meta.get("paperId")
+        doi = meta.get("doi") or meta.get("DOI")
+        
+        new_canonical = None
+        if s2_id:
+            new_canonical = to_canonical_id("semantic_scholar", str(s2_id))
+        elif doi:
+            # We don't have a direct "doi:" prefix usually, 
+            # `to_canonical_id` handles specific sources.
+            # But we can fallback to using DOI as ID.
+            new_canonical = f"doi:{doi}"
+        else:
+            new_canonical = p.get("canonical_id") # Fallback to original
+             
+        if new_canonical:
+            p["canonical_id"] = new_canonical
+        elif not p.get("canonical_id"):
+            # Fallback if no canonical ID exists at all
+            p["canonical_id"] = f"fallback:{uuid.uuid4()}"
+            
+        final_list.append(p)
+        
+    return final_list
+
+
+# ------------------------------------------------------------
 # MAIN PIPELINE
 # ------------------------------------------------------------
-async def process_research_task(query: str, include_paper_ids: Optional[List[str]] = None) -> Dict:
+async def process_research_task(
+    query: str, 
+    include_paper_ids: Optional[List[str]] = None,
+    task_id: Optional[str] = None,
+    user_id: Optional[str] = None
+) -> Dict:
     """
     PIPELINE:
     0. Fetch explicitly included local papers
-    1. Multi-source acquisition (External)
-    2. Deduplication (External vs External)
+    1. Multi-source acquisition (External) with Adaptive Expansion
+    2. Smart Deduplication
     3. PDF extraction
     4. DB upsert (merged metadata + hash dedupe)
     5. Vector embeddings (Chroma)
@@ -91,64 +278,153 @@ async def process_research_task(query: str, include_paper_ids: Optional[List[str
     if include_paper_ids is None:
         include_paper_ids = []
     
+    # Setup Progress Tracking
+    if not task_id:
+        task_id = str(uuid.uuid4())
+    
+    progress = ProgressTracker.start_task(task_id, user_id=user_id)
+    progress.update(phase=ResearchPhase.INITIALIZING, queries_total=1) # Start with 1 (main)
+
     db = SessionLocal()
 
     stored: List[Tuple[Paper, dict]] = []
     failed_storage = []
     failed_embedding = []
     error_message = None
+    
+    # Final list of papers to process
+    papers_to_process = []
 
     try:
         # --------------------------------------------
         # 0. Load Included Papers (Local)
         # --------------------------------------------
-        included_papers = []
         if include_paper_ids:
             logger.info(f"Including {len(include_paper_ids)} local papers")
-            # Fetch from DB
             local_papers_db = db.query(Paper).filter(Paper.id.in_(include_paper_ids)).all()
-            
             for lp in local_papers_db:
-                # Convert to dict format expected by pipeline
                 lp_dict = {
                     "canonical_id": lp.canonical_id,
                     "id": lp.paper_id,
                     "title": lp.title,
-                    "summary": lp.abstract, # Treat abstract as summary
-                    "pdf_url": None, # Local file, no download needed
+                    "summary": lp.abstract,
+                    "pdf_url": None,
                     "source": lp.paper_metadata.get("source", "local_file"),
                     "sources": ["local_file"],
                     "year": lp.published_year or 2024,
                     "authors": lp.paper_metadata.get("authors", []),
                     "metadata": lp.paper_metadata,
-                    "_is_local": True # Marker to skip download
+                    "_is_local": True
                 }
-                included_papers.append(lp_dict)
+                papers_to_process.append(lp_dict)
 
         # --------------------------------------------
-        # 1. Fetch merged papers
+        # 1. Adaptive Data Acquisition
         # --------------------------------------------
-        # USER REQUEST: Increased limit from 20 to 50 to avoid "Scope Limited" without manual uploads.
-        external_papers = await data_acquisition_agent.run(query, limit=50)
+        progress.update(phase=ResearchPhase.FETCHING_PAPERS)
         
-        # Combine (Local papers first to ensure they aren't lost)
-        papers = included_papers + external_papers
+        # A. Initial Fetch (Main Query)
+        logger.info(f"🔍 Running initial fetch for: {query}")
+        main_results = await data_acquisition_agent.run(query, limit=50)
+        
+        MIN_PAPERS_FOR_EXPANSION = 5
+        run_expansion = False
+        
+        if len(main_results) < MIN_PAPERS_FOR_EXPANSION:
+            logger.info(f"📉 Low result count ({len(main_results)}). Triggering expansion.")
+            run_expansion = True
+        else:
+            logger.info(f"✅ Sufficient results ({len(main_results)}). Skipping expansion.")
+             
+        collected_papers = main_results
+        
+        # Track Progress
+        current_found = len(main_results)
+        progress.update(
+            queries_completed=1, 
+            papers_found=current_found
+        )
 
+        if run_expansion:
+            progress.update(phase=ResearchPhase.EXPANDING_QUERIES)
+            
+            sub_queries = await generate_sub_queries(query)
+            logger.info(f"🧠 Generated sub-queries: {sub_queries}")
+            
+            if sub_queries:
+                progress.update(
+                    queries_total=1 + len(sub_queries),
+                    phase=ResearchPhase.FETCHING_PAPERS
+                )
+                
+                # Run concurrently
+                tasks = [data_acquisition_agent.run(sq, limit=20) for sq in sub_queries]
+                
+                # Robust Execution: Gather return_exceptions=True? 
+                # data_acquisition_agent handles logic but catch here too basically.
+                results_list = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for idx, res in enumerate(results_list):
+                    if isinstance(res, Exception):
+                        logger.error(f"Expansion query failed: {sub_queries[idx]} - {res}")
+                        progress.update(
+                            queries_failed=progress.queries_failed + 1,
+                            queries_completed=progress.queries_completed + 1,
+                            papers_found=current_found
+                        )
+                    else:
+                        # Tag Results
+                        for p in res:
+                            if "metadata" not in p: p["metadata"] = {}
+                            # Set at top level for easy access during upsert promotion
+                            p["origin"] = "query_expansion"
+                            p["source_query"] = sub_queries[idx]
+                            # Also keep in metadata for provenance
+                            p["metadata"]["origin"] = "query_expansion"
+                            p["metadata"]["source_query"] = sub_queries[idx]
+                        
+                        collected_papers.extend(res)
+                        current_found += len(res)
+                    
+                        progress.update(
+                            queries_completed=progress.queries_completed + 1,
+                            papers_found=current_found
+                        )
+        
+        # --------------------------------------------
+        # 2. Smart Deduplication
+        # --------------------------------------------
+        progress.update(phase=ResearchPhase.MERGING_RESULTS)
+        
+        # Combine local (already process) + fetched
+        # But wait, local papers shouldn't be deduped against external by ID? 
+        # Yes they should. If I uploaded X and it finds X online, merging is good.
+        all_raw = papers_to_process + collected_papers
+        
+        final_papers = _smart_deduplicate(all_raw)
+        
+        logger.info(f"📄 Papers after Smart Dedupe: {len(all_raw)} -> {len(final_papers)}")
+        
+        progress.update(papers_found=len(final_papers)) # Update with distinct count
+        
+        papers = final_papers
+        
         if not papers:
+            progress.update(phase=ResearchPhase.COMPLETED)
             return {
-                "success": True,
-                "query": query,
-                "papers_found": 0,
+                "success": True, 
+                "task_id": task_id,
+                "papers_found": 0, 
+                "papers": [],
+                "phases": progress.to_dict(),
                 "storage_failed": [],
                 "embedding_failed": [],
                 "db_ids": [],
-                "papers": []
-            }
-
-        logger.info(f"📄 Papers after dedupe+merge: {len(papers)}")
+                "error": None
+            } # Empty return structure handled below
 
         # --------------------------------------------
-        # 2. PDF extraction async
+        # 3. PDF extraction async
         # --------------------------------------------
         # For local papers, we might already have full text in DB, but extracting again is hard without file.
         # Actually, if _is_local is True, we skip download.
@@ -217,6 +493,13 @@ async def process_research_task(query: str, include_paper_ids: Optional[List[str
                     src = paper.get("source")
                     if src:
                         existing.paper_metadata[src] = paper
+                        
+                        # Promote critical metadata to root if present
+                        if "origin" in paper:
+                            existing.paper_metadata["origin"] = paper["origin"]
+                        if "source_query" in paper:
+                            existing.paper_metadata["source_query"] = paper["source_query"]
+                            
                         flag_modified(existing, "paper_metadata")
 
                     if is_nonempty_text(abstract):
@@ -244,21 +527,26 @@ async def process_research_task(query: str, include_paper_ids: Optional[List[str
                     if fulltext and not is_local:
                         hashes.append(hashlib.md5(fulltext.encode()).hexdigest())
 
+                    # Prepare metadata with promotions
+                    pm = {
+                        "source": paper.get("source", "unknown"),
+                        paper.get("source", "unknown"): paper,
+                        "pdf_hashes": hashes,
+                        "year": paper.get("year"),
+                        "authors": paper.get("authors", [])
+                    }
+                    if "origin" in paper: pm["origin"] = paper["origin"]
+                    if "source_query" in paper: pm["source_query"] = paper["source_query"]
+
                     db_obj = Paper(
                         canonical_id=canonical_id,
-                        paper_id=paper.get("id"),   # backward compatibility
+                        paper_id=paper.get("id"),
                         title=title,
                         abstract=abstract,
                         raw_text=fulltext,
-                        published_year=paper.get("year"), # Explicitly set column
+                        published_year=paper.get("year"), 
                         arxiv_id=paper.get("paper_id") if paper.get("source") == "arxiv" else None,
-                        paper_metadata={
-                            "source": paper.get("source", "unknown"),
-                            paper.get("source", "unknown"): paper,
-                            "pdf_hashes": hashes,
-                            "year": paper.get("year"), # redundant but safe
-                            "authors": paper.get("authors", [])
-                        },
+                        paper_metadata=pm,
                     )
                     db.add(db_obj)
 
@@ -311,6 +599,7 @@ async def process_research_task(query: str, include_paper_ids: Optional[List[str
 
     finally:
         db.close()
+        progress.update(phase=ResearchPhase.COMPLETED)
 
     # --------------------------------------------
     # FINAL RESULT
@@ -318,6 +607,7 @@ async def process_research_task(query: str, include_paper_ids: Optional[List[str
     return {
         "success": error_message is None,
         "query": query,
+        "task_id": task_id,
         "papers_found": len(stored),
         "storage_failed": failed_storage,
         "embedding_failed": failed_embedding,
@@ -335,10 +625,13 @@ async def process_research_task(query: str, include_paper_ids: Optional[List[str
                 "authors": db_obj.paper_metadata.get("authors", []),
                 "citation_count": db_obj.paper_metadata.get("citation_count", 0),
                 "venue": db_obj.paper_metadata.get("venue"),
+                "origin": db_obj.paper_metadata.get("origin"),
+                "source_query": db_obj.paper_metadata.get("source_query")
             }
             for db_obj, _ in stored
         ],
         "error": error_message,
+        "phases": progress.to_dict()
     }
 
 
