@@ -6,8 +6,13 @@ load_dotenv(".env.local")
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from services.graph_service import build_knowledge_graph
-from services.graph_analytics_service import GraphAnalyticsService
+
 import json
+from unittest.mock import patch, MagicMock
+
+# Mock MemoryService to avoid DB connection issues during test
+sys.modules['services.memory_service'] = MagicMock()
+from services.graph_analytics_service import GraphAnalyticsService
 
 def test_pipeline():
     print("Starting Research-Grade Pipeline Verification...\n")
@@ -68,7 +73,21 @@ def test_pipeline():
         {"source": "Human", "target": "Machine", "relation": "collaborates_with", "action": "add_edge"}
     ]
     
-    kg = build_knowledge_graph(paper_relations=paper_relations, run_meta=run_meta, overrides=overrides)
+    # Define papers with metadata (Testing Citation Bonus)
+    papers_meta = [
+        # P1 is highly cited
+        {"id": "P1", "paper_id": "P1", "metadata": {"citationCount": 1500}},
+        # P2 has minimal citations
+        {"id": "P2", "paper_id": "P2", "metadata": {"citationCount": 5}},
+        {"id": "P3", "paper_id": "P3", "metadata": {"citationCount": 0}},
+    ]
+
+    kg = build_knowledge_graph(
+        paper_relations=paper_relations, 
+        run_meta=run_meta, 
+        overrides=overrides,
+        papers=papers_meta
+    )
     
     # Check Override (Add Edge)
     links = kg["links"]
@@ -102,12 +121,29 @@ def test_pipeline():
     try:
         improves = [l for l in exercise_health if l["relation"] == "improves"][0]
         print(f"Confidence (Improves): {improves.get('confidence')} (Evidence: {improves.get('evidence_count')})")
+        
+        # Verify Citation Bonus
+        # P1 (1500 citations) supports this edge.
+        # Max Citations > 1000 -> Bonus +0.15
+        # Base: 0.6
+        # Evidence (2 papers): Source Boost +0.1
+        # Agreement: 0.0
+        # Expected: 0.6 + 0.1 + 0.15 = 0.85
+        # The exact implementation: base(0.6) + source(0.1) + bonus(0.15) - penalty(0) = 0.85
+        
+        assert improves.get('confidence') >= 0.85, f"Citation Bonus Failed. Expected >= 0.85, got {improves.get('confidence')}"
+        print("✅ Citation Bonus Verified!")
+
     except IndexError:
         raise AssertionError("Could not find 'improves' edge. Check normalization or aggregation.")    
     # 3. Analyze Graph (Analytics Layer)
     # ----------------------------------
     print("\n--- Phase 2: Research Analytics ---")
-    analytics = GraphAnalyticsService(kg).analyze()
+    
+    # Mock the static method get_edge_context
+    with patch('services.graph_analytics_service.MemoryService') as MockMemory:
+        MockMemory.get_edge_context.return_value = {"max_run_count": 0, "is_contested": False}
+        analytics = GraphAnalyticsService(kg).analyze()
     
     # Check Conflicts
     conflicts = analytics["conflicts"]

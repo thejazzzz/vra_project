@@ -26,8 +26,34 @@ logger = logging.getLogger(__name__)
 # PDF DOWNLOAD + EXTRACTION
 # ------------------------------------------------------------
 # ------------------------------------------------------------
-# PDF DOWNLOAD + EXTRACTION
+# PDF DOWNLOAD + EXTRACTION (STEALTH MODE)
 # ------------------------------------------------------------
+import random
+
+# A. User-Agent Rotation
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+]
+
+import threading
+
+# C. Hard Concurrency Cap
+PDF_SEMAPHORE: Optional[asyncio.Semaphore] = None
+_INIT_LOCK = threading.Lock()
+
+def get_random_header():
+    return {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept": "application/pdf,application/x-download,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
+    }
+
 def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
     """
     Extracts text from PDF bytes using PyMuPDF (fitz).
@@ -46,35 +72,80 @@ async def download_pdf(pdf_url: Optional[str]) -> str:
         return ""
 
     import aiohttp
-    import asyncio
+    
+    # D. Respect arXiv etiquette
+    if "arxiv.org" in pdf_url:
+        import os
+        contact_email = os.environ.get("ARXIV_CONTACT_EMAIL", "admin@example.com")
+        headers = {
+            "User-Agent": f"VRA_Research_Assistant/1.0 (mailto:{contact_email})",
+            "Accept": "application/pdf"
+        }
+    else:
+        headers = get_random_header()
 
-    headers = {
-        "User-Agent": "VRA_Research_Assistant/1.0 (mailto:admin@example.com)",
-        "Accept": "application/pdf,application/x-download,*/*"
-    }
+    global PDF_SEMAPHORE
+    
+    # Safe Lazy Initialization
+    if PDF_SEMAPHORE is None:
+        with _INIT_LOCK:
+            if PDF_SEMAPHORE is None:
+                PDF_SEMAPHORE = asyncio.Semaphore(1)
 
     for attempt in range(3):
         try:
-            async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get(pdf_url, timeout=30) as resp:
-                    if resp.status == 200:
-                        pdf_bytes = await resp.read()
-                        return await asyncio.to_thread(extract_text_from_pdf_bytes, pdf_bytes)
-                    elif resp.status == 429:
-                        logger.warning(f"Rate limited (429) for {pdf_url}. Retrying in {2**attempt}s...")
-                        await asyncio.sleep(2**attempt)
-                        continue
-                    elif resp.status == 403:
-                        logger.warning(f"Access Forbidden (403) for {pdf_url}. Might be bot protection. Retrying...")
-                        await asyncio.sleep(2**attempt)
-                        continue
-                    else:
-                        logger.warning(f"PDF download failed ({resp.status}): {pdf_url}")
-                        return ""
-                        
+            # Rotate UA on retry for non-arxiv
+            if attempt > 0 and "arxiv.org" not in pdf_url:
+                    headers = get_random_header()
+
+            timeout = aiohttp.ClientTimeout(total=45)
+            
+            # CRITICAL: Only hold semaphore during actual network request
+            async with PDF_SEMAPHORE: 
+                async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
+                    async with session.get(pdf_url) as resp:
+                        status = resp.status
+                        if status == 200:
+                            # Check content type if possible
+                            pdf_bytes = await resp.read()
+
+            # Process outside semaphore (CPU bound or just flow logic)
+            if status == 200:
+                if len(pdf_bytes) < 1000: 
+                    logger.warning(f"Downloaded file too small ({len(pdf_bytes)}b) for {pdf_url}")
+                    return ""
+                return await asyncio.to_thread(extract_text_from_pdf_bytes, pdf_bytes)
+            
+            # B. Smart Retry Policy (OUTSIDE Semaphore)
+            elif status == 429: # Rate Limit
+                delay = (2 ** attempt) + random.uniform(3, 8)
+                logger.warning(f"🛑 Rate limited (429) for {pdf_url}. Backoff {delay:.2f}s...")
+                await asyncio.sleep(delay)
+                continue
+                
+            elif status == 403: # Forbidden
+                delay = (2 ** attempt) + random.uniform(5, 10)
+                logger.warning(f"🚫 Access Forbidden (403) for {pdf_url}. Retrying with new UA in {delay:.2f}s...")
+                await asyncio.sleep(delay)
+                continue
+                
+            elif status in [500, 502, 503, 504]: # Server Error
+                delay = (1.5 ** attempt) + random.uniform(1, 3)
+                logger.warning(f"Server error ({status}) for {pdf_url}. Retrying in {delay:.2f}s...")
+                await asyncio.sleep(delay)
+                continue
+                
+            else:
+                logger.warning(f"PDF download failed ({status}): {pdf_url}")
+                return ""
+                
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            delay = (2 ** attempt) + random.uniform(1, 3)
+            logger.warning(f"Network error for {pdf_url} (Attempt {attempt+1}): {e}. Retrying in {delay:.2f}s...")
+            await asyncio.sleep(delay)
         except Exception as e:
-            logger.warning(f"PDF request failed for {pdf_url} (Attempt {attempt+1}): {e}")
-            await asyncio.sleep(2**attempt)
+            logger.error(f"Unexpected error downloading {pdf_url}: {e}")
+            return ""
 
     return ""
 
@@ -290,6 +361,7 @@ async def process_research_task(
     stored: List[Tuple[Paper, dict]] = []
     failed_storage = []
     failed_embedding = []
+    saved_db_objects = [] # Initialized early for safety
     error_message = None
     
     # Final list of papers to process
@@ -421,52 +493,21 @@ async def process_research_task(
                 "embedding_failed": [],
                 "db_ids": [],
                 "error": None
-            } # Empty return structure handled below
+            } 
 
         # --------------------------------------------
-        # 3. PDF extraction async
+        # 3. Store Metadata & Start Background Download in parallel
         # --------------------------------------------
-        # For local papers, we might already have full text in DB, but extracting again is hard without file.
-        # Actually, if _is_local is True, we skip download.
         
-        pdf_tasks = []
-        for p in papers:
-            if p.get("_is_local"):
-                # No download needed, text is already in DB or we assume abstract is enough?
-                # The pipeline expects `pdf_texts` to align with `papers`.
-                # If it's local, we might want to fetch raw_text from DB if available.
-                # However, for simplicity here, we append empty string as `download_pdf` returns for failure,
-                # BUT we handle the text injection in step 3.
-                pdf_tasks.append(asyncio.to_thread(lambda: "")) 
-            else:
-                pdf_tasks.append(download_pdf(p.get("pdf_url")))
-
-        pdf_texts = await asyncio.gather(*pdf_tasks)
-
-        vector_client = get_client()
-
-
-        # --------------------------------------------
-        # 3. DB UPSERT (NO COMMIT INSIDE LOOP)
-        # --------------------------------------------
-        for paper, downloaded_text in zip(papers, pdf_texts):
-            
-            # If local, use existing text if available (though we didn't fetch it above to save RAM)
-            # Actually, `ingest_local_file` already put text in DB. 
-            # We just need to ensure `fulltext` is correct.
-            fulltext = downloaded_text
-            
-            # If it was local, we skip updating raw_text unless we want to overwrite.
-            # But the pipeline logic below appends text.
-            # Let's ensure we don't duplicate work for local files.
-            is_local = paper.get("_is_local", False)
-
+        # We save metadata FIRST so user sees papers immediately
+        saved_db_objects = []
+        for paper in papers:
+            # 3a. Prepare DB Object
             title = clean_text(paper.get("title", "Untitled"))
             abstract = clean_text(paper.get("summary", ""))
-
             canonical_id = paper.get("canonical_id")
             
-            # Fallback if somehow missing (e.g. direct call bypassing merger)
+            # Fallback ID
             if not canonical_id:
                 canonical_id = build_canonical_id(
                     primary_id=paper.get("id"),
@@ -474,124 +515,53 @@ async def process_research_task(
                     source=paper.get("source")
                 )
             
-            if not canonical_id:
-                logger.error(f"❌ Skipping paper '{title[:30]}...' - Could not generate canonical_id")
-                failed_storage.append({"error": "missing_canonical_id", "title": title[:50], "source": paper.get("source")})
-                continue
             try:
-                existing = (
-                    db.query(Paper)
-                    .filter(Paper.canonical_id == canonical_id)
-                    .one_or_none()
-                )
-
-                # =====================================================
-                # CASE A — UPDATE EXISTING ROW
-                # =====================================================
+                # Upsert Logic (Simplified for metadata first)
+                existing = db.query(Paper).filter(Paper.canonical_id == canonical_id).one_or_none()
+                
+                # Metadata to merge
+                pm = paper.get("metadata", {}) or {}
+                # Initialize tracking if new
+                if "pdf_status" not in pm: pm["pdf_status"] = "queued"
+                if "pdf_attempts" not in pm: pm["pdf_attempts"] = 0
+                
                 if existing:
-
-                    src = paper.get("source")
-                    if src:
-                        existing.paper_metadata[src] = paper
-                        
-                        # Promote critical metadata to root if present
-                        if "origin" in paper:
-                            existing.paper_metadata["origin"] = paper["origin"]
-                        if "source_query" in paper:
-                            existing.paper_metadata["source_query"] = paper["source_query"]
-                            
-                        flag_modified(existing, "paper_metadata")
-
-                    if is_nonempty_text(abstract):
-                        existing.abstract = abstract
-
-                    # -------- HASH-BASED DEDUPLICATION --------
-                    # Use provided text (downloaded) OR skip if local (trusting existing)
-                    if fulltext and not is_local:
-                        content_hash = hashlib.md5(fulltext.encode()).hexdigest()
-                        existing_hashes = existing.paper_metadata.get("pdf_hashes", [])
-
-                        if content_hash not in existing_hashes:
-                            existing.raw_text = (existing.raw_text or "") + "\n" + fulltext
-                            existing_hashes.append(content_hash)
-                            existing.paper_metadata["pdf_hashes"] = existing_hashes
-                            flag_modified(existing, "paper_metadata")
-
+                    # Merge metadata
+                    existing.paper_metadata = {**existing.paper_metadata, **pm}
+                    flag_modified(existing, "paper_metadata")
+                    if is_nonempty_text(abstract): existing.abstract = abstract
                     db_obj = existing
-
-                # =====================================================
-                # CASE B — INSERT NEW PAPER
-                # =====================================================
                 else:
-                    hashes = []
-                    if fulltext and not is_local:
-                        hashes.append(hashlib.md5(fulltext.encode()).hexdigest())
-
-                    # Prepare metadata with promotions
-                    pm = {
-                        "source": paper.get("source", "unknown"),
-                        paper.get("source", "unknown"): paper,
-                        "pdf_hashes": hashes,
-                        "year": paper.get("year"),
-                        "authors": paper.get("authors", [])
-                    }
-                    if "origin" in paper: pm["origin"] = paper["origin"]
-                    if "source_query" in paper: pm["source_query"] = paper["source_query"]
-
                     db_obj = Paper(
                         canonical_id=canonical_id,
                         paper_id=paper.get("id"),
                         title=title,
                         abstract=abstract,
-                        raw_text=fulltext,
-                        published_year=paper.get("year"), 
-                        arxiv_id=paper.get("paper_id") if paper.get("source") == "arxiv" else None,
-                        paper_metadata=pm,
+                        published_year=paper.get("year"),
+                        paper_metadata=pm
                     )
                     db.add(db_obj)
-
-                stored.append((db_obj, paper))
-
+                
+                saved_db_objects.append(db_obj)
+                
             except Exception as e:
-                logger.error(f"❌ DB write failed for {canonical_id}: {e}", exc_info=True)
-                db.rollback()
+                logger.error(f"Metadata save failed for {title}: {e}")
                 failed_storage.append(canonical_id)
-                continue
 
-        # --------------------------------------------
-        # 3B. BATCH COMMIT (IMPORTANT!)
-        # --------------------------------------------
-        if stored:
-            db.commit()
-            for db_obj, _ in stored:
-                db.refresh(db_obj)
-
-        # --------------------------------------------
-        # 4. CHROMA EMBEDDINGS — CORRECT ALIGNMENT
-        # --------------------------------------------
-        papers_to_embed = []
-
-        for db_obj, _ in stored:
-            if is_nonempty_text(db_obj.abstract):
-                chroma_id = f"paper-{db_obj.id}"
-                papers_to_embed.append((db_obj, chroma_id))
-
-        if papers_to_embed:
-            embed_tasks = [
-                asyncio.to_thread(
-                    vector_client.store,
-                    chroma_id,
-                    db_obj.abstract,
-                    {"paper_db_id": db_obj.id, "canonical_id": db_obj.canonical_id},
-                )
-                for db_obj, chroma_id in papers_to_embed
-            ]
-
-            results = await asyncio.gather(*embed_tasks, return_exceptions=True)
-
-            for (db_obj, _), result in zip(papers_to_embed, results):
-                if isinstance(result, Exception):
-                    failed_embedding.append(db_obj.canonical_id)
+        db.commit()
+        for obj in saved_db_objects: db.refresh(obj) # Get IDs
+        
+        # 3b. Fire Background Task (Fire-and-Forget)
+        # We pass the IDs so the background worker can re-fetch safe objects
+        paper_ids_map = {p.id: p.canonical_id for p in saved_db_objects}
+        
+        # Start background loop
+        # Guard against crash / log exceptions
+        bg_task = asyncio.create_task(_background_pdf_worker(paper_ids_map, papers))
+        bg_task.add_done_callback(
+            lambda t: logger.error(f"Background PDF worker crashed: {t.exception()}") 
+            if t.exception() and not t.cancelled() else None
+        )
 
     except Exception as e:
         error_message = str(e)
@@ -601,38 +571,140 @@ async def process_research_task(
         db.close()
         progress.update(phase=ResearchPhase.COMPLETED)
 
-    # --------------------------------------------
-    # FINAL RESULT
-    # --------------------------------------------
+    # 4. Return Fast Results (Abstracts Only initially)
     return {
         "success": error_message is None,
         "query": query,
         "task_id": task_id,
-        "papers_found": len(stored),
+        "papers_found": len(saved_db_objects),
         "storage_failed": failed_storage,
-        "embedding_failed": failed_embedding,
-        "db_ids": [db_obj.id for db_obj, _ in stored],
-        # Return the ENRICHED papers from the DB, not the raw input `papers`
-        # This ensures we get the extracted abstract/fulltext if available
+        "embedding_failed": [], # Embeddings happen in bg now
+        "db_ids": [obj.id for obj in saved_db_objects],
         "papers": [
             {
-                "canonical_id": db_obj.canonical_id,
-                "title": db_obj.title,
-                "abstract": db_obj.abstract, # The critical field
-                "source": db_obj.paper_metadata.get("source", "unknown"),
-                "url": db_obj.paper_metadata.get("url"),
-                "year": db_obj.paper_metadata.get("year"),
-                "authors": db_obj.paper_metadata.get("authors", []),
-                "citation_count": db_obj.paper_metadata.get("citation_count", 0),
-                "venue": db_obj.paper_metadata.get("venue"),
-                "origin": db_obj.paper_metadata.get("origin"),
-                "source_query": db_obj.paper_metadata.get("source_query")
+                "canonical_id": obj.canonical_id,
+                "title": obj.title,
+                "abstract": obj.abstract,
+                "source": obj.paper_metadata.get("source", "unknown"),
+                "pdf_status": obj.paper_metadata.get("pdf_status", "queued"),
+                "year": obj.published_year,
+                "authors": obj.paper_metadata.get("authors", []),
+                "origin": obj.paper_metadata.get("origin")
             }
-            for db_obj, _ in stored
+            for obj in saved_db_objects
         ],
         "error": error_message,
         "phases": progress.to_dict()
     }
+
+async def _background_pdf_worker(paper_ids: Dict[int, str], papers_data: List[Dict]):
+    """
+    Background task to download PDFs, update DB, and generate embeddings.
+    """
+    logger.info(f"🚀 Starting background PDF download for {len(paper_ids)} papers...")
+    
+    db = SessionLocal()
+    vector_client = get_client()
+    
+    try:
+        # Match papers_data to DB IDs
+        # papers_data acts as the source for URLs
+        # We need to map properly. 
+        # Actually, let's just use the DB objects since we saved metadata there?
+        # But we need paper['pdf_url'] which might not be in DB yet if we only saved metadata.
+        # Let's rely on papers_data matching order or map by canonical_id.
+        
+        # Create map: canonical_id -> paper_dict
+        msg_map = {}
+        for p in papers_data:
+            cid = p.get("canonical_id")
+            # Fallback ID logic from above
+            if not cid:
+                cid = build_canonical_id(p.get("id"), p.get("title", ""), p.get("source"))
+            msg_map[cid] = p
+
+        for db_id, canonical_id in paper_ids.items():
+            paper_dict = msg_map.get(canonical_id)
+            if not paper_dict:
+                logger.warning(f"No paper_dict found for canonical_id={canonical_id}, db_id={db_id}. Skipping.")
+                continue
+
+            pdf_url = paper_dict.get("pdf_url")
+            
+            # Fetch fresh object
+            db_obj = db.query(Paper).filter(Paper.id == db_id).first()
+            if not db_obj: continue
+
+            # Check if we should skip (Persistent Failure Tracking)
+            meta = db_obj.paper_metadata or {}
+            if meta.get("pdf_status") == "failed_permanent":
+                logger.info(f"Skipping permanently failed PDF: {canonical_id}")
+                continue
+                
+            attempts = meta.get("pdf_attempts", 0)
+            if attempts > 3:
+                meta["pdf_status"] = "failed_permanent"
+                db_obj.paper_metadata = meta
+                flag_modified(db_obj, "paper_metadata")
+                db.commit()
+                continue
+
+            # Download
+            if pdf_url and not db_obj.raw_text: # Only if text missing
+                logger.info(f"⬇️ Downloading PDF for {db_id}: {pdf_url}")
+                
+                # Increment attempts
+                meta["pdf_attempts"] = attempts + 1
+                meta["pdf_status"] = "downloading"
+                db_obj.paper_metadata = meta
+                flag_modified(db_obj, "paper_metadata")
+                db.commit()
+                
+                fulltext = await download_pdf(pdf_url)
+                
+                if is_nonempty_text(fulltext):
+                    db_obj.raw_text = fulltext
+                    meta["pdf_status"] = "success"
+                    # Hash logic
+                    content_hash = hashlib.md5(fulltext.encode()).hexdigest()
+                    hashes = meta.get("pdf_hashes", [])
+                    if content_hash not in hashes:
+                        hashes.append(content_hash)
+                        meta["pdf_hashes"] = hashes
+                    
+                    logger.info(f"✅ PDF Success for {db_id}")
+                else:
+                    meta["pdf_status"] = "failed_retry"
+                    logger.warning(f"❌ PDF Failed for {db_id}")
+
+                db_obj.paper_metadata = meta
+                flag_modified(db_obj, "paper_metadata")
+                db.commit()
+
+            # Embed
+            # Prefer abstract to keep vectors topic-focused. Fallback to truncated text.
+            content_to_embed = db_obj.abstract
+            if not is_nonempty_text(content_to_embed) and db_obj.raw_text:
+                content_to_embed = db_obj.raw_text[:3000] # Truncate to avoid noise
+
+            if is_nonempty_text(content_to_embed):
+                chroma_id = f"paper-{db_obj.id}"
+                try:
+                    await asyncio.to_thread(
+                         vector_client.store,
+                         chroma_id,
+                         content_to_embed[:8000], # Chunk limit
+                         {"paper_db_id": db_obj.id, "canonical_id": db_obj.canonical_id}
+                    )
+                except Exception as ve:
+                    # Log but continue to ensure other papers get processed
+                    logger.error(f"⚠️ Embedding failed for {db_obj.canonical_id} (ID: {db_obj.id}): {ve}")
+
+    except Exception as e:
+        logger.error(f"Background worker failed: {e}", exc_info=True)
+    finally:
+        db.close()
+
 
 
 async def ingest_local_file(

@@ -1,7 +1,7 @@
 # agents/graph_builder_agent.py
 import logging
 from typing import Dict
-from services.graph_service import build_knowledge_graph, build_citation_graph, enrich_knowledge_graph
+from services.graph_service import build_knowledge_graph, build_citation_graph, enrich_knowledge_graph, EvaluationMode
 from services.graph_persistence_service import save_graphs
 from services.author_graph_service import build_author_graph
 from services.graph_analytics_service import GraphAnalyticsService
@@ -51,11 +51,28 @@ class GraphBuilderAgent:
         # ----------------------------
         # Build Knowledge Graph
         # ----------------------------
+        # Auto-Detect Scarcity
+        # Trigger if paper count matches OR PDF coverage is low
+        paper_count = len(selected_papers)
+         
+        # Calculate PDF coverage (Rely ONLY on status for robust check)
+        # If 'pdf_status' is missing, do not count as success.
+        successful_pdfs = sum(1 for p in selected_papers if p.get("pdf_status") == "success")
+        
+        pdf_success_rate = successful_pdfs / max(1, paper_count)
+        eval_mode = EvaluationMode.STRICT
+        
+        if paper_count < 3 or pdf_success_rate < 0.4:
+            logger.info(f"📉 Scarcity Detected (Papers: {paper_count}, PDF Rate: {pdf_success_rate:.0%}). Switching to SCARCITY mode.")
+            eval_mode = EvaluationMode.SCARCITY
+            
         kg = build_knowledge_graph(
             paper_relations=paper_relations,
             paper_concepts=paper_concepts,
             global_analysis=global_analysis,
-            run_meta=run_meta
+            run_meta=run_meta,
+            evaluation_mode=eval_mode,
+            papers=selected_papers
         )
 
         # ----------------------------

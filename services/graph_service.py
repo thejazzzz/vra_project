@@ -13,16 +13,23 @@ logger = logging.getLogger(__name__)
 
 
 from services.schema.relation_ontology import get_relation_props, CausalStrength
+from enum import Enum
+
+class EvaluationMode(Enum):
+    STRICT = "strict"
+    SCARCITY = "scarcity"
+
 
 def calculate_confidence(
     base_confidence: float,
     evidence_count: int,
     agreement_bonus: float = 0.0,
-    conflict_penalty: float = 0.0
+    conflict_penalty: float = 0.0,
+    citation_bonus: float = 0.0
 ) -> float:
     """
     Research-Grade Confidence Scoring Algorithm.
-    Formula: (Base + Source_Boost + Agreement) * Consistency
+    Formula: (Base + Source_Boost + Agreement + Citation_Boost) * Consistency
     """
     # 1. Source Boost: Diminishing returns for more sources
     # 1 source -> +0.0, 2 -> +0.1, 3 -> +0.15, 5+ -> +0.2
@@ -31,7 +38,7 @@ def calculate_confidence(
     elif evidence_count >= 3: source_boost = 0.15
     elif evidence_count >= 2: source_boost = 0.1
     
-    final_score = base_confidence + source_boost + agreement_bonus - conflict_penalty
+    final_score = base_confidence + source_boost + agreement_bonus + citation_bonus - conflict_penalty
     return max(0.1, min(1.0, final_score)) # Cap between 0.1 and 1.0
 
 
@@ -40,16 +47,41 @@ def build_knowledge_graph(
     paper_concepts: Optional[Dict[str, List[str]]] = None,
     global_analysis: Optional[Dict[str, Any]] = None,
     run_meta: Optional[Dict[str, Any]] = None,
-    overrides: Optional[List[Dict]] = None # Phase 3: User Feedback
+    overrides: Optional[List[Dict]] = None, # Phase 3: User Feedback
+    evaluation_mode: EvaluationMode = EvaluationMode.STRICT,
+    papers: Optional[List[Dict]] = None # Phase 4: Citation Metadata
 ) -> Dict:
     """
     Build a semantic Knowledge Graph (KG) with Verification & Confidence Scoring.
     Phase 1 Enhanced: Logically verified, evidence-backed graph construction.
     Phase 3: Added Run-Level Provenance & User Overrides.
+    Phase 4: Added Scarcity Mode and Citation-Based Confidence.
     """
+    # -----------------------------
+    # Scarcity Settings
+    # -----------------------------
+    is_scarcity = (evaluation_mode == EvaluationMode.SCARCITY)
+    MIN_PAPERS = 2 if is_scarcity else 3
+    MIN_EDGES = 3 if is_scarcity else 5
+    CONFIDENCE_FLOOR = 0.35 if is_scarcity else 0.45 
+    ALLOW_ASSOCIATIVE = is_scarcity  # Allow weaker edges in scarcity mode
+    
+    logger.info(f"🏗️ Building Graph in {evaluation_mode.value.upper()} mode (Min Papers: {MIN_PAPERS})")
+
     G = nx.MultiDiGraph() # Changed to MultiDiGraph to support conflicting edges (research-grade)
     if run_meta:
         G.graph["meta"] = run_meta
+
+    # Index Papers for Citation Lookup
+    paper_map = {}
+    if papers:
+        for p in papers:
+            # We match by ID used in relations key
+            pid = p.get("id") or p.get("paper_id") # normalized paper_id
+            if pid: paper_map[str(pid)] = p
+            # Also map canonical if different
+            cid = p.get("canonical_id")
+            if cid: paper_map[str(cid)] = p
 
     # -----------------------------
     # Helper: Canonicalization (Methodological Requirement)
@@ -200,47 +232,126 @@ def build_knowledge_graph(
     # -----------------------------
     # 4. Verification & Edge Construction
     # -----------------------------
-    confidence_calibration = {"0.0-0.3": 0, "0.3-0.6": 0, "0.6-1.0": 0}
+    # -----------------------------
+    # 4. Verification & Edge Construction
+    # -----------------------------
 
-    for (src, tgt, rel_raw), evidence_list in aggregated_edges.items():
-        # Get Ontology Properties
+    # Phase 2: Graph Construction & Enrichment
+    # -----------------------------
+    
+    # 2a. Add Edges with Initial Confidence (Pass 1)
+    temp_edges = []
+    
+    for relation_key, evidence_list in aggregated_edges.items():
+        src, tgt, rel_raw = relation_key
         props = get_relation_props(rel_raw)
         
-        # Calculate Confidence
+        # Calculate Base Confidence from Evidence
         unique_papers = set()
+        max_citations = 0
+
         for ev in evidence_list:
-            if "paper_id" in ev: unique_papers.add(ev["paper_id"])
+             pid = ev.get("paper_id")
+             if pid: 
+                 unique_papers.add(pid)
+                 # Check Citations
+                 if paper_map and pid in paper_map:
+                     p_meta = paper_map[pid].get("metadata", {})
+                     # Try multiple keys because structure varies
+                     cc = p_meta.get("citationCount") or p_meta.get("citation_count") or 0
+                     if isinstance(cc, int) and cc > max_citations:
+                         max_citations = cc
         
         evidence_count = len(unique_papers)
-        conf_score = calculate_confidence(0.6, evidence_count)
         
-        # User Feedback Check: CONFIRM -> Boost Confidence
-        if (src, tgt) in confirm_set:
-            conf_score = min(conf_score + 0.3, 1.0) # Bonus for user confirmation
+        # Citation Bonus
+        # Logarithmic-ish steps
+        citation_bonus = 0.0
+        if max_citations > 1000: citation_bonus = 0.15
+        elif max_citations > 100: citation_bonus = 0.10
+        elif max_citations > 20: citation_bonus = 0.05
+        
+        # User Feedback Check
+        agreement_bonus = 0.3 if (src, tgt) in confirm_set else 0.0
+        
+        # Store for Pass 2
+        temp_edges.append({
+            "u": src, "v": tgt, "key": relation_key, 
+            "evidence_count": evidence_count,
+            "agreement_bonus": agreement_bonus,
+            "citation_bonus": citation_bonus,
+            "evidence_list": evidence_list,
+            "props": props
+        })
+        
+        # Add basic edge for PageRank
+        G.add_edge(src, tgt)
 
+    # 2b. Compute PageRank (on preliminary graph)
+    pagerank = {}
+    if G.number_of_edges() > 0:
+        try:
+            pagerank = nx.pagerank(G, alpha=0.85)
+        except Exception as e:
+            logger.debug(f"PageRank computation failed: {e}")
+
+    # 2c. Finalize Edges with Boosted Confidence (Pass 2)
+    # Preserve Manual Edges before clearing
+    manual_edges_backup = []
+    for u, v, data in G.edges(data=True):
+        if data.get("is_manual"):
+            manual_edges_backup.append((u, v, data))
+
+    G.remove_edges_from(list(G.edges))
+    
+    confidence_calibration = {"0.0-0.3": 0, "0.3-0.6": 0, "0.6-1.0": 0}
+
+    for edge_data in temp_edges:
+        src = edge_data["u"]
+        tgt = edge_data["v"]
+        
+        # Citation Bonus (PageRank)
+        src_rank = pagerank.get(src, 0)
+        tgt_rank = pagerank.get(tgt, 0)
+        
+        rank_bonus = 0.0
+        if src_rank > 0.05 and tgt_rank > 0.05:
+            rank_bonus = 0.05
+            
+        conf_score = calculate_confidence(
+            0.6, 
+            edge_data["evidence_count"], 
+            agreement_bonus=edge_data["agreement_bonus"] + rank_bonus,
+            citation_bonus=edge_data["citation_bonus"]
+        )
+        
         # Calibration Tracking
         if conf_score < 0.3: confidence_calibration["0.0-0.3"] += 1
         elif conf_score < 0.6: confidence_calibration["0.3-0.6"] += 1
         else: confidence_calibration["0.6-1.0"] += 1
 
         # Research Flags
-        is_hypothesis = conf_score < 0.45
-        insufficient_evidence = evidence_count == 1 and conf_score < 0.5
+        is_hypothesis = conf_score < CONFIDENCE_FLOOR
+        insufficient_evidence = edge_data["evidence_count"] == 1 and conf_score < 0.5
 
-        # Add Edge
+        # Add Final Edge
         G.add_edge(
-            src, tgt,
-            relation=props.label,
-            original_relation=rel_raw,
-            polarity=props.polarity,
-            causal_strength=props.strength.value,
-            symmetric=props.symmetric,
+            src, tgt, 
+            relation=edge_data["props"].label, # Use .label from props
+            original_relation=edge_data["key"][2], # rel_raw
+            polarity=edge_data["props"].polarity,
+            causal_strength=edge_data["props"].strength.value,
+            symmetric=edge_data["props"].symmetric,
             confidence=conf_score,
-            evidence_count=evidence_count,
-            evidence=evidence_list,
+            evidence_count=edge_data["evidence_count"],
+            evidence=edge_data["evidence_list"],
             is_hypothesis=is_hypothesis,
             insufficient_evidence=insufficient_evidence
         )
+        
+    # Re-add Manual Edges
+    for u, v, data in manual_edges_backup:
+        G.add_edge(u, v, **data)
     
     # Store calibration metadata in graph attributes for later analysis
     G.graph["confidence_calibration"] = confidence_calibration
@@ -248,18 +359,40 @@ def build_knowledge_graph(
     # -----------------------------
     # Phase 4 Safety: Scope Verification
     # -----------------------------
-    total_edges = G.number_of_edges()
-    
-    # Estimate Unique Papers (approximate from edges evidence or paper nodes)
-    # Better: Use the input `paper_relations` keys
     total_papers = len(paper_relations) if paper_relations else 0
     
-    # Rule: < 3 Papers OR < 5 Edges -> Insufficient
-    if total_papers < 3 or total_edges < 5:
+    # Meaningful Edge Count (Exclude 'appears_in', low confidence)
+    # Refined logic using ALLOW_ASSOCIATIVE flag
+    meaningful_edges = []
+    for _, _, e in G.edges(data=True):
+        # 1. Check Confidence
+        if e.get("confidence", 0) < CONFIDENCE_FLOOR: 
+            continue
+            
+        # 2. Check Relation Type compatibility
+        rel = e.get("relation")
+        
+        # Always exclude meta-relation "appears_in" from Counting Scope
+        if rel == "appears_in": 
+            continue
+            
+        # If NOT in Scarcity Mode (ALLOW_ASSOCIATIVE=False), exclude weak associations
+        if not ALLOW_ASSOCIATIVE and rel == "associated_with":
+            continue
+            
+        meaningful_edges.append(e)
+    
+    total_edges = len(meaningful_edges)
+    
+    # Rule: < MIN_PAPERS OR < MIN_EDGES -> Insufficient
+    if total_papers < MIN_PAPERS or total_edges < MIN_EDGES:
         G.graph["scope_limited"] = True
         logger.warning(f"⚠️ Graph Scope Limited: {total_papers} papers, {total_edges} edges. Analytics will be refused.")
     else:
         G.graph["scope_limited"] = False
+        
+    G.graph["evaluation_mode"] = evaluation_mode.value
+    G.graph["maturity"] = "exploratory" if is_scarcity else "verified"
 
     # -----------------------------
     # 5. Frequency Annotation (Existing Logic Refined)
