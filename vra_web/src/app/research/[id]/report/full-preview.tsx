@@ -24,7 +24,7 @@ export function FullReportPreview({
     const handleFinalize = async () => {
         if (
             !confirm(
-                "Are you sure you want to finalize the report? This will lock all sections."
+                "Are you sure you want to finalize the report? This will lock all sections.",
             )
         )
             return;
@@ -40,17 +40,49 @@ export function FullReportPreview({
         }
     };
 
-    const handleExport = async (format: "pdf" | "docx" | "markdown") => {
+    const [isExporting, setIsExporting] = useState(false);
+
+    const handleExport = async (
+        format: "pdf" | "docx" | "markdown" | "latex",
+    ) => {
+        // Guard: Check completion
+        if (state.report_status !== "completed") {
+            alert("Please finalize the report before exporting.");
+            return;
+        }
+
+        // Guard: Runtime format check
+        const allowed = ["pdf", "docx", "markdown", "latex"];
+        if (!allowed.includes(format)) {
+            alert("Invalid export format requested.");
+            return;
+        }
+
+        // Guard: Loading
+        if (isExporting) return;
+
+        setIsExporting(true);
         try {
             const blob = await reportingApi.exportReport(sessionId, format);
             // Create a link and click it to download
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
-            link.setAttribute(
-                "download",
-                `research-report.${format === "markdown" ? "md" : format}`
-            );
+
+            let ext: string = format;
+            if (format === "markdown") ext = "md";
+            if (format === "latex") ext = "tex";
+
+            // Improved File Naming with Sanity Check
+            // @ts-ignore - query/title might be missing from strict type but available at runtime or we use fallback
+            const title =
+                (state as any).title ||
+                (state as any).query ||
+                "research-report";
+            const safeTitle = title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+            const filename = `${safeTitle}-${sessionId.substring(0, 8)}.${ext}`;
+
+            link.setAttribute("download", filename);
             document.body.appendChild(link);
             link.click();
 
@@ -59,9 +91,13 @@ export function FullReportPreview({
                 document.body.removeChild(link);
                 window.URL.revokeObjectURL(url);
             }, 100);
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            alert("Failed to export report.");
+            const msg =
+                err?.response?.data?.detail || "Failed to export report.";
+            alert(msg);
+        } finally {
+            setIsExporting(false);
         }
     };
 
@@ -77,8 +113,8 @@ export function FullReportPreview({
                     </h2>
                     <p className="text-sm text-gray-400">
                         {isCompleted
-                            ? "Report finalized and ready for export."
-                            : "Review the full report before finalizing."}
+                            ? "Report finalized. Preview shows content only; structure applied on export."
+                            : "Review and finalize to enable export options."}
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -87,27 +123,54 @@ export function FullReportPreview({
                             <Button
                                 variant="outline"
                                 onClick={() => handleExport("markdown")}
+                                disabled={isExporting}
                                 className="border-neutral-700 text-gray-300 hover:bg-neutral-800 hover:text-white"
                             >
-                                <Download className="w-4 h-4 mr-2" />
+                                {isExporting ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Download className="w-4 h-4 mr-2" />
+                                )}
                                 Markdown
                             </Button>
-                            {/* PDF/DOCX are stubs in backend, but UI is ready */}
                             <Button
                                 variant="outline"
                                 onClick={() => handleExport("docx")}
+                                disabled={isExporting}
                                 className="border-neutral-700 text-gray-300 hover:bg-neutral-800 hover:text-white"
                             >
-                                <Download className="w-4 h-4 mr-2" />
+                                {isExporting ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Download className="w-4 h-4 mr-2" />
+                                )}
                                 DOCX
                             </Button>
                             <Button
                                 variant="outline"
                                 onClick={() => handleExport("pdf")}
+                                disabled={isExporting}
                                 className="border-neutral-700 text-gray-300 hover:bg-neutral-800 hover:text-white"
                             >
-                                <Download className="w-4 h-4 mr-2" />
+                                {isExporting ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Download className="w-4 h-4 mr-2" />
+                                )}
                                 PDF
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={() => handleExport("latex")}
+                                disabled={isExporting}
+                                className="border-neutral-700 text-gray-300 hover:bg-neutral-800 hover:text-white"
+                            >
+                                {isExporting ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Download className="w-4 h-4 mr-2" />
+                                )}
+                                LaTeX
                             </Button>
                         </>
                     ) : (
@@ -131,6 +194,11 @@ export function FullReportPreview({
             <div className="flex-1 overflow-auto p-8 lg:p-12">
                 <div className="max-w-4xl mx-auto bg-neutral-900 shadow-lg rounded-xl min-h-full p-12 print:shadow-none print:p-0 border border-neutral-800">
                     <div className="prose prose-invert prose-blue prose-lg max-w-none">
+                        <div className="mb-8 p-4 bg-yellow-900/20 border border-yellow-800 rounded text-yellow-200 text-sm">
+                            <strong>Note:</strong> This is a content preview.
+                            NUMBERING, TABLE OF CONTENTS, and ABSTRACT will be
+                            generated in the exported file.
+                        </div>
                         <h1>Research Report</h1>
                         {state.sections.map((section) => (
                             <div

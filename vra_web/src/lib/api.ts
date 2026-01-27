@@ -321,7 +321,10 @@ export const reportingApi = {
             .then((res) => res.data.report_state),
 
     // Export: HEAVY
-    exportReport: (sessionId: string, format: "pdf" | "docx" | "markdown") =>
+    exportReport: (
+        sessionId: string,
+        format: "pdf" | "docx" | "markdown" | "latex",
+    ) =>
         longRunningApi
             .post(
                 "/reporting/export",
