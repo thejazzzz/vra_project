@@ -1,3 +1,4 @@
+# services/reporting/export_service.py
 from typing import Dict, Any, List, Optional, Union
 import logging
 import os
@@ -14,58 +15,21 @@ class ExportService:
     @staticmethod
     def export_report(state: Dict[str, Any], format: str) -> bytes:
         """
-        Exports the report to the requested format.
+        Exports the report to the requested format using ReportFormatter.
         
         Args:
             state: The full report state dictionary.
-            format: Target format ('pdf', 'docx', 'markdown').
+            format: Target format ('pdf', 'docx', 'markdown', 'latex').
 
         Returns:
             bytes: The binary content of the exported report.
         """
-        format = format.lower()
-
-        # 2. Generate Content (Stub -> Real Bytes placeholders)
-        content_bytes = b""
-        
-        # Assemble text (simple concatenation for now)
-        report_state = state.get("report_state", {})
-        sections = report_state.get("sections", [])
-        full_text = f"# Report: {state.get('query', 'Untitled')}\n\n"
-        for section in sections:
-            full_text += f"## {section.get('title', 'Unknown')}\n\n"
-            full_text += f"{section.get('content', '')}\n\n"
-            
-        # Mock encoding for different formats
-        if format == "markdown":
-            content_bytes = full_text.encode('utf-8')
-        elif format == "pdf":
-            # STUB: PDF export is currently a placeholder.
-            # Requires external libraries like reportlab or weasyprint.
-            raise NotImplementedError("PDF export is not yet implemented. Please use 'markdown' format.")
-
-        elif format == "docx":
-            # STUB: DOCX export is currently a placeholder.
-            # Requires external libraries like python-docx.
-            raise NotImplementedError("DOCX export is not yet implemented. Please use 'markdown' format.")
-
-
-        # 3. Handle Output
-        if output_path:
-            try:
-                # Create parent directories
-                parent_dir = os.path.dirname(os.path.abspath(output_path))
-                if parent_dir:
-                    os.makedirs(parent_dir, exist_ok=True)
-                
-                with open(output_path, "wb") as f:
-                    f.write(content_bytes)
-                return output_path
-            except OSError as e:
-                logger.error(f"Failed to write export to {output_path}: {e}")
-                raise 
-        
-        return content_bytes
+        from services.formatter.formatter_core import ReportFormatter
+        try:
+            return ReportFormatter.format_report(state, export_format=format)
+        except Exception as e:
+            logger.error(f"Export failed for format {format}: {e}")
+            raise 
 
     @staticmethod
     def validate_markdown(content: str) -> bool:
