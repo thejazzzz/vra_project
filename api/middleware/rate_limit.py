@@ -12,7 +12,7 @@ class RateLimitMiddleware:
     Simple in-memory rate limiter using Fixed Window algorithm.
     Thread-safe and memory-bounded using asyncio locks and TTLCache.
     """
-    def __init__(self, requests_per_minute: int = 60):
+    def __init__(self, requests_per_minute: int = 300):
         self.rate_limit = requests_per_minute
         self.window_size = 60 # seconds
         self.clients = TTLCache(maxsize=10000, ttl=self.window_size) # IP -> list of timestamps

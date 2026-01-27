@@ -176,22 +176,38 @@ async def export_report(
     payload: ExportRequest,
     current_user: User = Depends(get_current_user)
 ):
-    state = InteractiveReportingService.get_report_state(payload.session_id, current_user.id)
-    if not state:
+    from services.state_service import load_state_for_query
+    
+    # Load FULL state (including query, report_state, etc.)
+    state = load_state_for_query(payload.session_id, current_user.id)
+    if not state or not state.get("report_state"):
         raise HTTPException(status_code=404, detail="Report state not found")
 
-    if state["report_status"] != "completed":
+    if state["report_state"]["report_status"] != "completed":
         raise HTTPException(status_code=400, detail="Report must be finalized before export")
 
     if payload.format.lower() not in {"pdf", "docx", "markdown"}:
         raise HTTPException(status_code=400, detail=f"Unsupported format: {payload.format}")
 
     # TODO: Stream response
-    # For now, just a stub
+    # Real Export Implementation
+    from fastapi.responses import Response
+
+    media_types = {
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "markdown": "text/markdown",
+        "latex": "application/x-latex"
+    }
+
     try:
-        # We might call ExportService here actually generating it
-        # content = ExportService.export_report(..., payload.format)
-        return {"message": f"Export to {payload.format} triggered (Stub)", "status": "success"}
+        content = ExportService.export_report(state, payload.format)
+        media_type = media_types.get(payload.format.lower(), "application/octet-stream")
+        
+        # We return the binary content directly. 
+        # The frontend handles the filename via the 'download' attribute.
+        return Response(content=content, media_type=media_type)
+        
     except Exception as e:
-        logger.error(f"Export failed: {e}")
-        raise HTTPException(status_code=500, detail="Export failed")
+        logger.error(f"Export generation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Export generation failed: {str(e)}")

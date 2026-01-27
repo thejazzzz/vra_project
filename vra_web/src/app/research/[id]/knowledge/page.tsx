@@ -116,6 +116,7 @@ export default function KnowledgeGraphPage() {
     };
 
     const params = useParams();
+    const router = useRouter();
     const id = useMemo(() => {
         const rawId = params?.id;
         if (!rawId || typeof rawId !== "string") {
@@ -137,7 +138,7 @@ export default function KnowledgeGraphPage() {
         if (isAdvancing && id) {
             interval = setInterval(() => {
                 syncState(id);
-            }, 3000);
+            }, 5000);
         }
         return () => clearInterval(interval);
     }, [isAdvancing, id, syncState]);

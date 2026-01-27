@@ -11,6 +11,23 @@ class GapAnalysisAgent:
     with supporting evidence, confidence scores, and detailed taxonomy.
     """
     
+    # Diversified Phrasing Templates
+    NASCENT_TEMPLATES = [
+        "The concept '{concept}' is nascent and lacks deep exploration.",
+        "Emerging concept '{concept}' shows limited coverage in current literature.",
+        "Significant research opportunity exists to expand on '{concept}', which remains under-studied.",
+        "Early stage research detects '{concept}' as a developing area with few dedicated papers.",
+        "Novel area: '{concept}' has been identified but requires further investigation."
+    ]
+
+    UNDER_EXPLORED_TEMPLATES = [
+        "The concept '{concept}' is under-explored relative to its potential impact.",
+        "Literature review indicates '{concept}' has sparse connections and requires more attention.",
+        "Gap identified: '{concept}' lacks robust supporting evidence in the current graph.",
+        "There is a clear need for more empirical studies focusing on '{concept}'.",
+        "Research coverage for '{concept}' is below average, suggesting an opportunity for contribution."
+    ]
+
     def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         logger.info("🔍 Gap Analysis: Scanning for evidence-backed research opportunities...")
         
@@ -104,13 +121,22 @@ class GapAnalysisAgent:
             if paper_count <= 2 and confidence > 0.6:
                  rationale = f"Concept '{n}' has low coverage ({paper_count} papers) and low clustering ({clustering:.2f}), indicating a {nature} topic."
                  
+                 # Randomize description
+                 import random
+                 if nature == "nascent":
+                     desc_template = random.choice(self.NASCENT_TEMPLATES)
+                 else:
+                     desc_template = random.choice(self.UNDER_EXPLORED_TEMPLATES)
+                 
+                 description = desc_template.format(concept=n)
+
                  gaps.append({
                         "gap_id": f"GAP_CONCEPT_{n.upper()}",
                         "gap_class": "conceptual",
                         "type": "under_explored_concept",
                         "subtype": nature,
                         "concept": n,
-                        "description": f"The concept '{n}' is {nature} and lacks deep exploration.",
+                        "description": description,
                         "rationale": rationale,
                         "evidence": {
                             "paper_count": paper_count,

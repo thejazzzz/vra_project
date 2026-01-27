@@ -26,11 +26,11 @@ export function ReportDashboard({ sessionId }: ReportDashboardProps) {
 
     // URL Sync State
     const [activeSectionId, setActiveSectionId] = useState<string>(
-        searchParams.get("section") || ""
+        searchParams.get("section") || "",
     );
 
     const activeSection = state?.sections?.find(
-        (s) => s.section_id === activeSectionId
+        (s) => s.section_id === activeSectionId,
     );
 
     // Determines if we should show the full preview instead of the workspace
@@ -56,7 +56,7 @@ export function ReportDashboard({ sessionId }: ReportDashboardProps) {
             // Handle 404 as "Not Started" -> Show Init Gate
             if (err.response && err.response.status === 404) {
                 console.warn(
-                    "Report state not found (404), treating as uninitialized."
+                    "Report state not found (404), treating as uninitialized.",
                 );
                 setState(null);
                 setError(null);
@@ -104,7 +104,7 @@ export function ReportDashboard({ sessionId }: ReportDashboardProps) {
                 state.sections?.some((s) => s.status === "generating"));
 
         if (shouldPoll) {
-            pollingRef.current = setInterval(fetchState, 3000);
+            pollingRef.current = setInterval(fetchState, 5000);
         } else {
             if (pollingRef.current) clearInterval(pollingRef.current);
         }
