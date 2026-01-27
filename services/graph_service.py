@@ -363,10 +363,17 @@ def build_knowledge_graph(
     
     # Meaningful Edge Count (Exclude 'appears_in', low confidence)
     # Refined logic using ALLOW_ASSOCIATIVE flag
+    # Meaningful Edge Count (Exclude 'appears_in', low confidence)
+    raw_edge_count = G.number_of_edges()
+    is_sparse = raw_edge_count < 20 # Dynamic Scarcity Mode
+
     meaningful_edges = []
     for _, _, e in G.edges(data=True):
         # 1. Check Confidence
-        if e.get("confidence", 0) < CONFIDENCE_FLOOR: 
+        # If sparse, lower the floor to show *something* (Exploratory)
+        effective_floor = CONFIDENCE_FLOOR * 0.5 if is_sparse else CONFIDENCE_FLOOR
+        
+        if e.get("confidence", 0) < effective_floor: 
             continue
             
         # 2. Check Relation Type compatibility
@@ -377,7 +384,8 @@ def build_knowledge_graph(
             continue
             
         # If NOT in Scarcity Mode (ALLOW_ASSOCIATIVE=False), exclude weak associations
-        if not ALLOW_ASSOCIATIVE and rel == "associated_with":
+        # BUT if graph is sparse, allow them to spur curiosity
+        if not ALLOW_ASSOCIATIVE and not is_sparse and rel == "associated_with":
             continue
             
         meaningful_edges.append(e)

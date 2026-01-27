@@ -131,6 +131,31 @@ export default function KnowledgeGraphPage() {
 
     const [isAdvancing, setIsAdvancing] = useState(false);
 
+    // Polling for status updates when advancing
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (isAdvancing && id) {
+            interval = setInterval(() => {
+                syncState(id);
+            }, 3000);
+        }
+        return () => clearInterval(interval);
+    }, [isAdvancing, id, syncState]);
+
+    // Intelligent Redirection based on Step
+    useEffect(() => {
+        if (!currentStep) return;
+
+        // If we moved past graph review, go to gaps
+        if (
+            currentStep === "gap_analysis" ||
+            currentStep === "review_gaps" ||
+            currentStep === "awaiting_gap_review"
+        ) {
+            router.push(`/research/${id}/gaps`);
+        }
+    }, [currentStep, id, router]);
+
     const handleApprove = async () => {
         if (!id) return;
         setIsAdvancing(true);
@@ -138,13 +163,20 @@ export default function KnowledgeGraphPage() {
             // Phase 4: Validated Approval Trigger
             await graphApi.approve(id, "current-user"); // TODO: Use real user ID
 
-            // Trigger Workflow Continuation
+            // Trigger Workflow Continuation (Background)
+            // Note: Use review-graph endpoint or continue?
+            // The file `planner.py` shows `review_graph` endpoint sets triggering "awaiting_gap_analysis".
+            // But `handleApprove` calls `plannerApi.continue(id)`.
+            // `continue` just runs `run_until_interaction`.
+            // If the state was already "awaiting_graph_review", `continue` might just pick it up.
+            // Let's stick to what was there, but ensure we poll.
             await plannerApi.continue(id);
 
             toast({
                 title: "Graph Approved",
                 description: "Research continuing to Gap Analysis...",
             });
+            // Don't set isAdvancing(false) here, wait for redirect or error
         } catch (error) {
             console.error("Failed to approve graph:", error);
             setIsAdvancing(false); // Only reset on error
@@ -378,54 +410,58 @@ export default function KnowledgeGraphPage() {
                                                 Loading context...
                                             </div>
                                         ) : contextSnippets.length > 0 ? (
-                                            <ul className="space-y-3">
-                                                {contextSnippets.map(
-                                                    (snip, i) => (
-                                                        <li
-                                                            key={i}
-                                                            className="leading-snug bg-background/50 p-2 rounded border border-border/50"
-                                                        >
-                                                            <p className="italic mb-1">
-                                                                "
-                                                                {snip.document.slice(
-                                                                    0,
-                                                                    150,
-                                                                )}
-                                                                ..."
-                                                            </p>
-                                                            {/* PROVENANCE FIX: Attribute Source */}
-                                                            {snip.metadata
-                                                                ?.canonical_id ? (
-                                                                <div className="flex justify-end mt-1">
-                                                                    <PaperLink
-                                                                        paperId={
-                                                                            snip
-                                                                                .metadata
-                                                                                .canonical_id
-                                                                        }
-                                                                        variant="inline"
-                                                                        className="text-[10px]"
-                                                                    />
+                                            <ScrollArea className="h-72 rounded-md border bg-background/40 p-1">
+                                                <ul className="space-y-3 p-2 pb-8">
+                                                    {contextSnippets.map(
+                                                        (snip, i) => (
+                                                            <li
+                                                                key={i}
+                                                                className="leading-snug bg-background/80 p-3 rounded border border-border/50 shadow-sm relative"
+                                                            >
+                                                                <p className="italic mb-2 text-[11px] text-foreground/90">
+                                                                    "
+                                                                    {snip.document.slice(
+                                                                        0,
+                                                                        200,
+                                                                    )}
+                                                                    ..."
+                                                                </p>
+                                                                {/* PROVENANCE FIX: Attribute Source */}
+                                                                <div className="flex justify-end pt-2 border-t border-dashed border-border/50">
+                                                                    {snip
+                                                                        .metadata
+                                                                        ?.canonical_id ? (
+                                                                        <PaperLink
+                                                                            paperId={
+                                                                                snip
+                                                                                    .metadata
+                                                                                    .canonical_id
+                                                                            }
+                                                                            variant="inline"
+                                                                            className="text-[10px] font-medium text-primary hover:text-primary/80 z-10 relative"
+                                                                        />
+                                                                    ) : (
+                                                                        <span className="text-[10px] text-muted-foreground">
+                                                                            —
+                                                                            System
+                                                                            Context
+                                                                        </span>
+                                                                    )}
                                                                 </div>
-                                                            ) : (
-                                                                <span className="flex justify-end text-[10px] text-muted-foreground mt-1">
-                                                                    — System
-                                                                    Context
-                                                                </span>
-                                                            )}
-                                                        </li>
-                                                    ),
-                                                )}
-                                            </ul>
+                                                            </li>
+                                                        ),
+                                                    )}
+                                                </ul>
+                                            </ScrollArea>
                                         ) : (
-                                            <p>
+                                            <p className="p-2 text-xs italic">
                                                 No direct context found in
                                                 papers.
                                             </p>
                                         )}
 
                                         {/* FALSE AUTHORITY BADGE */}
-                                        <div className="mt-4 pt-3 border-t border-border/50">
+                                        <div className="mt-3 pt-2 border-t border-border/50">
                                             <div className="text-[10px] text-muted-foreground flex gap-2 items-start bg-yellow-500/10 p-2 rounded">
                                                 <Info className="h-3 w-3 shrink-0 translate-y-0.5 text-yellow-500" />
                                                 <span>

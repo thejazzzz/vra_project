@@ -68,6 +68,13 @@ def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
         return ""
 
 async def download_pdf(pdf_url: Optional[str]) -> str:
+    global PDF_SEMAPHORE
+    # Safe Lazy Initialization
+    if PDF_SEMAPHORE is None:
+        with _INIT_LOCK:
+            if PDF_SEMAPHORE is None:
+                PDF_SEMAPHORE = asyncio.Semaphore(1)
+
     if not pdf_url:
         return ""
 
@@ -83,14 +90,6 @@ async def download_pdf(pdf_url: Optional[str]) -> str:
         }
     else:
         headers = get_random_header()
-
-    global PDF_SEMAPHORE
-    
-    # Safe Lazy Initialization
-    if PDF_SEMAPHORE is None:
-        with _INIT_LOCK:
-            if PDF_SEMAPHORE is None:
-                PDF_SEMAPHORE = asyncio.Semaphore(1)
 
     for attempt in range(3):
         try:
