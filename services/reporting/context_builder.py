@@ -90,89 +90,38 @@ class ContextBuilder:
         # Common Metadata
         query = state.get("query", "Unknown Topic")
         
-        if section_id == "exec_summary":
-            # Extract high-level summaries only
-            trends = state.get("concept_trends", {}).get("trends", {})
-            sorted_trends = sorted(trends.items(), key=lambda x: x[1].get("total_count", 0), reverse=True)[:5]
-            trend_summary = ", ".join([f"{k} ({v.get('status', 'Unknown')})" for k, v in sorted_trends])
+        # --- NEW LOGIC: Provide universal rich context for all chapters ---
+        facts = {"query": query}
+        
+        # Global themes
+        ga = state.get("global_analysis", {})
+        if ga:
+            facts["global_themes"] = str(ga.get("themes", "None"))
+            if "executive_summary" in ga:
+                facts["executive_summary"] = str(ga.get("executive_summary", "None"))
             
-            gaps = state.get("research_gaps", [])
-            gap_summary = f"{len(gaps)} gaps identified."
-            if gaps:
-                gap_summary += f" Top gap: {gaps[0].get('description')}"
-
-            return {
-                **base_context,
-                "query": query,
-                "trend_summary": trend_summary,
-                "gap_summary": gap_summary
-            }
-
-        elif section_id == "trend_analysis":
-            # Tabular data for trends
-            trends_data = state.get("concept_trends", {}).get("trends", {})
-            # Textual representation for LLM
-            lines = []
-            for concept, data in trends_data.items():
-                lines.append(
-                    f"Concept: {concept} | Status: {data.get('status')} | "
-                    f"Growth: {data.get('growth_rate')} | Stability: {data.get('stability')}"
-                )
-            return {
-                **base_context,
-                "query": query,
-                "trends_table": "\n".join(lines)
-            }
-
-        elif section_id == "gap_analysis":
-            # Detailed gap list
-            gaps = state.get("research_gaps", [])
-            lines = []
-            for g in gaps:
-                lines.append(
-                    f"ID: {g.get('gap_id')} | Type: {g.get('type')} | "
-                    f"Desc: {g.get('description')} | Rationale: {g.get('rationale')} | "
-                    f"Confidence: {g.get('confidence')}"
-                )
-            return {
-                **base_context,
-                "query": query,
-                "gaps_list": "\n".join(lines)
-            }
-
-        elif section_id == "network_analysis":
-            ag = state.get("author_graph", {})
-            nodes = ag.get("nodes", [])
-            # Top 5 influencers
-            top_nodes = sorted(nodes, key=lambda x: x.get("influence_score", 0), reverse=True)[:5]
-            authors = [f"{n.get('id', 'Unknown')} (Score: {n.get('influence_score', 0)})" for n in top_nodes]
-
+        # Literature & Summaries
+        papers = state.get("selected_papers", [])[:10]
+        if papers:
+            paper_lines = []
+            for p in papers:
+                title = p.get('title', 'Unknown')
+                summary = state.get("paper_summaries", {}).get(p.get("paper_id"), p.get("abstract", ""))
+                if summary:
+                    paper_lines.append(f"- {title}: {summary}")
+            facts["literature_context"] = "\n".join(paper_lines)
             
+        # Gaps
+        gaps = state.get("research_gaps", [])
+        if gaps:
+            gap_lines = [f"- {g.get('description', '')} ({g.get('rationale', '')})" for g in gaps[:5]]
+            facts["identified_gaps"] = "\n".join(gap_lines)
             
-            return {
-                **base_context,
-                "query": query,
-                "author_stats": ", ".join(authors),
-                "diversity_index": ag.get("meta", {}).get("diversity_index", "N/A")
-            }
-        elif section_id == "limitations":
-            ag = state.get("author_graph", {})
-            meta = ag.get("meta", {})
-            valid = meta.get("metrics_valid", False)
-            
-            warnings = []
-            if not valid:
-                warnings.append("Metrics are heuristic due to sparse data or lack of edges.")
-            if meta.get("warning"):
-                warnings.append(meta.get("warning"))
-                
-            papers = state.get("selected_papers", [])
-            
-            return {
-                **base_context,
-                "provenance_stats": f"Papers: {len(papers)}. Edges: {meta.get('edges_present', 0)}",
-                "data_warnings": "\n".join(warnings)
-                if warnings else "None."
-            }
+        # Trends
+        trends = state.get("concept_trends", {}).get("trends", {})
+        if trends:
+            sorted_trends = sorted(trends.items(), key=lambda x: x[1].get("total_count", 0), reverse=True)[:10]
+            trend_lines = [f"- {k}: {v.get('status', 'Unknown')} (Growth: {v.get('growth_rate', 0)})" for k, v in sorted_trends]
+            facts["concept_trends"] = "\n".join(trend_lines)
 
-        return {}
+        return {**base_context, **facts}

@@ -214,17 +214,16 @@ class SectionCompiler:
 
     def _extract_anchors(self, context: str) -> str:
         """
-        Robustly extracts 'bullet-safe' anchors to avoid partial sentences.
+        Robustly extracts anchors.
         """
         lines = context.splitlines()
         anchors = []
         total_len = 0
-        MAX_LEN = 1500
+        MAX_LEN = 3000
         
         for line in lines:
             line = line.strip()
-            # Keep non-empty lines that aren't excessively long (likely garbage/base64)
-            if line and len(line) < 200:
+            if line:
                 anchors.append(line)
                 total_len += len(line)
             
