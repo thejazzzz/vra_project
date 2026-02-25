@@ -205,6 +205,11 @@ export const plannerApi = {
 
     getSessions: (): Promise<any> =>
         defaultApi.get<any>("/planner/sessions").then((res) => res.data),
+
+    deleteSession: (sessionId: string): Promise<any> =>
+        defaultApi
+            .delete<any>(`/planner/sessions/${encodeURIComponent(sessionId)}`)
+            .then((res) => res.data),
 };
 
 // Research: Fast? Depends. Assuming manual add is fast.

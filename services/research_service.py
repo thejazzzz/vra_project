@@ -5,6 +5,7 @@ import logging
 import fitz
 import hashlib
 from typing import Dict, List, Optional, Tuple
+import concurrent.futures
 
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -44,6 +45,8 @@ import threading
 # C. Hard Concurrency Cap
 PDF_SEMAPHORE: Optional[asyncio.Semaphore] = None
 _INIT_LOCK = threading.Lock()
+
+_bg_db_executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
 
 def get_random_header():
     return {
@@ -123,10 +126,8 @@ async def download_pdf(pdf_url: Optional[str]) -> str:
                 continue
                 
             elif status == 403: # Forbidden
-                delay = (2 ** attempt) + random.uniform(5, 10)
-                logger.warning(f"🚫 Access Forbidden (403) for {pdf_url}. Retrying with new UA in {delay:.2f}s...")
-                await asyncio.sleep(delay)
-                continue
+                logger.warning(f"🚫 403 Forbidden (Permanent). No retry: {pdf_url}")
+                return ""
                 
             elif status in [500, 502, 503, 504]: # Server Error
                 delay = (1.5 ** attempt) + random.uniform(1, 3)
@@ -604,7 +605,25 @@ async def _background_pdf_worker(paper_ids: Dict[int, str], papers_data: List[Di
     
     db = SessionLocal()
     vector_client = get_client()
+    MAX_PDF_ATTEMPTS = 3
     
+    def apply_abstract_fallback(meta: Dict, db_obj: Paper, db_id: int):
+        logger.warning(f"⚠️ PDF restricted or download failed. Using abstract fallback for {db_id}.")
+        meta["pdf_status"] = "abstract_fallback"
+        meta["text_source"] = "abstract_only"
+        
+        if is_nonempty_text(db_obj.abstract):
+            raw_authors = meta.get("authors", [])
+            norm_authors = []
+            for a in raw_authors:
+                name = a.get("name") if isinstance(a, dict) else str(a)
+                if name: norm_authors.append(name)
+            authors_str = ", ".join(norm_authors)
+            db_obj.raw_text = f"Title: {db_obj.title}\nAuthors: {authors_str}\n\nAbstract:\n{db_obj.abstract}"
+        else:
+            meta["pdf_status"] = "failed_permanent"
+            meta["text_source"] = "none"
+
     try:
         # Match papers_data to DB IDs
         # papers_data acts as the source for URLs
@@ -630,55 +649,69 @@ async def _background_pdf_worker(paper_ids: Dict[int, str], papers_data: List[Di
 
             pdf_url = paper_dict.get("pdf_url")
             
-            # Fetch fresh object
-            db_obj = db.query(Paper).filter(Paper.id == db_id).first()
+            # Fetch fresh object safely via thread
+            loop = asyncio.get_running_loop()
+            
+            def get_paper(id):
+                return db.query(Paper).filter(Paper.id == id).first()
+
+            db_obj = await loop.run_in_executor(_bg_db_executor, get_paper, db_id)
             if not db_obj: continue
 
-            # Check if we should skip (Persistent Failure Tracking)
             meta = db_obj.paper_metadata or {}
-            if meta.get("pdf_status") == "failed_permanent":
-                logger.info(f"Skipping permanently failed PDF: {canonical_id}")
-                continue
-                
+            
+            # Skip download logic if already processed
+            already_processed = meta.get("pdf_status") in ["success", "abstract_fallback", "failed_permanent"]
             attempts = meta.get("pdf_attempts", 0)
-            if attempts > 3:
-                meta["pdf_status"] = "failed_permanent"
-                db_obj.paper_metadata = meta
-                flag_modified(db_obj, "paper_metadata")
-                db.commit()
-                continue
 
-            # Download
-            if pdf_url and not db_obj.raw_text: # Only if text missing
-                logger.info(f"⬇️ Downloading PDF for {db_id}: {pdf_url}")
-                
-                # Increment attempts
-                meta["pdf_attempts"] = attempts + 1
-                meta["pdf_status"] = "downloading"
+            # Cap retries to avoid bounding issues
+            if attempts >= MAX_PDF_ATTEMPTS and not already_processed:
+                logger.warning(f"Max PDF attempts reached for {db_id}. Applying fallback.")
+                apply_abstract_fallback(meta, db_obj, db_id)
                 db_obj.paper_metadata = meta
-                flag_modified(db_obj, "paper_metadata")
-                db.commit()
                 
-                fulltext = await download_pdf(pdf_url)
+                def save_and_commit():
+                    flag_modified(db_obj, "paper_metadata")
+                    db.commit()
                 
-                if is_nonempty_text(fulltext):
-                    db_obj.raw_text = fulltext
-                    meta["pdf_status"] = "success"
-                    # Hash logic
-                    content_hash = hashlib.md5(fulltext.encode()).hexdigest()
-                    hashes = meta.get("pdf_hashes", [])
-                    if content_hash not in hashes:
-                        hashes.append(content_hash)
-                        meta["pdf_hashes"] = hashes
+                await loop.run_in_executor(_bg_db_executor, save_and_commit)
+                already_processed = True
+
+            # Download or Fallback
+            if not db_obj.raw_text and not already_processed:
+                if pdf_url:
+                    logger.info(f"⬇️ Downloading PDF for {db_id}: {pdf_url}")
                     
-                    logger.info(f"✅ PDF Success for {db_id}")
+                    # Defer commit until after download
+                    fulltext = await download_pdf(pdf_url)
+                    
+                    meta["pdf_attempts"] = attempts + 1
+                    
+                    if is_nonempty_text(fulltext):
+                        db_obj.raw_text = fulltext
+                        meta["pdf_status"] = "success"
+                        # Hash logic
+                        content_hash = hashlib.md5(fulltext.encode()).hexdigest()
+                        hashes = meta.get("pdf_hashes", [])
+                        if content_hash not in hashes:
+                            hashes.append(content_hash)
+                            meta["pdf_hashes"] = hashes
+                        
+                        logger.info(f"✅ PDF Success for {db_id}")
+                    else:
+                        apply_abstract_fallback(meta, db_obj, db_id)
                 else:
-                    meta["pdf_status"] = "failed_retry"
-                    logger.warning(f"❌ PDF Failed for {db_id}")
+                    logger.warning(f"⚠️ No PDF URL available for {db_id}.")
+                    meta["pdf_attempts"] = attempts + 1 # count as attempt
+                    apply_abstract_fallback(meta, db_obj, db_id)
 
                 db_obj.paper_metadata = meta
-                flag_modified(db_obj, "paper_metadata")
-                db.commit()
+                
+                def save_and_commit_data():
+                    flag_modified(db_obj, "paper_metadata")
+                    db.commit()
+                
+                await loop.run_in_executor(_bg_db_executor, save_and_commit_data)
 
             # Embed
             # Prefer abstract to keep vectors topic-focused. Fallback to truncated text.

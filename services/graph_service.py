@@ -22,7 +22,7 @@ class EvaluationMode(Enum):
 
 def calculate_confidence(
     base_confidence: float,
-    evidence_count: int,
+    evidence_count: float,
     agreement_bonus: float = 0.0,
     conflict_penalty: float = 0.0,
     citation_bonus: float = 0.0
@@ -249,20 +249,55 @@ def build_knowledge_graph(
         # Calculate Base Confidence from Evidence
         unique_papers = set()
         max_citations = 0
+        
+        # Calculate Weight Influence
+        total_weight = 0.0
 
         for ev in evidence_list:
-             pid = ev.get("paper_id")
-             if pid: 
-                 unique_papers.add(pid)
-                 # Check Citations
-                 if paper_map and pid in paper_map:
-                     p_meta = paper_map[pid].get("metadata", {})
-                     # Try multiple keys because structure varies
-                     cc = p_meta.get("citationCount") or p_meta.get("citation_count") or 0
-                     if isinstance(cc, int) and cc > max_citations:
-                         max_citations = cc
+            pid = ev.get("paper_id")
+            if pid: 
+                unique_papers.add(pid)
+                 
+                weight = 1.0 # Default High
+                 
+                # Check Citations and Content Source
+                if paper_map and pid in paper_map:
+                    p_meta = paper_map[pid].get("metadata", {})
+                     
+                    # 1. Determine Weight (Full text vs Abstract)
+                    pdf_status = paper_map[pid].get("pdf_status") or p_meta.get("pdf_status")
+                    text_source = p_meta.get("text_source")
+                     
+                    if text_source == "abstract_only" or pdf_status == "abstract_fallback":
+                        weight = 0.7
+                         
+                    total_weight += weight
+                     
+                    # 2. Extract Citations
+                    cc = p_meta.get("citationCount") or p_meta.get("citation_count") or 0
+                    try:
+                        cc_num = int(float(cc))
+                        if cc_num > max_citations and cc_num >= 0:
+                            max_citations = cc_num
+                    except (ValueError, TypeError):
+                        pass
+                else:
+                    total_weight += weight
+            else:
+                 # Non-paper evidence (e.g., global_analysis): count with default weight
+                 total_weight += 0.5  # or 1.0, depending on desired policy
+
+
+            
         
         evidence_count = len(unique_papers)
+        
+        # Compute abstract-weighted evidence metric
+        if len(unique_papers) == 0:
+            logger.info(f"Edge {relation_key} has zero paper-backed evidence ({len(unique_papers)} papers).")
+            effective_evidence_count = 0.5
+        else:
+            effective_evidence_count = total_weight
         
         # Citation Bonus
         # Logarithmic-ish steps
@@ -278,6 +313,7 @@ def build_knowledge_graph(
         temp_edges.append({
             "u": src, "v": tgt, "key": relation_key, 
             "evidence_count": evidence_count,
+            "effective_evidence": effective_evidence_count,
             "agreement_bonus": agreement_bonus,
             "citation_bonus": citation_bonus,
             "evidence_list": evidence_list,
@@ -296,11 +332,11 @@ def build_knowledge_graph(
             logger.debug(f"PageRank computation failed: {e}")
 
     # 2c. Finalize Edges with Boosted Confidence (Pass 2)
-    # Preserve Manual Edges before clearing
-    manual_edges_backup = []
+    # Preserve Manual and Meta Edges before clearing
+    preserved_edges = []
     for u, v, data in G.edges(data=True):
-        if data.get("is_manual"):
-            manual_edges_backup.append((u, v, data))
+        if data.get("is_manual") or data.get("type") == "meta" or data.get("relation") == "appears_in":
+            preserved_edges.append((u, v, data))
 
     G.remove_edges_from(list(G.edges))
     
@@ -320,7 +356,7 @@ def build_knowledge_graph(
             
         conf_score = calculate_confidence(
             0.6, 
-            edge_data["evidence_count"], 
+            edge_data["effective_evidence"] if "effective_evidence" in edge_data else edge_data["evidence_count"], 
             agreement_bonus=edge_data["agreement_bonus"] + rank_bonus,
             citation_bonus=edge_data["citation_bonus"]
         )
@@ -349,8 +385,8 @@ def build_knowledge_graph(
             insufficient_evidence=insufficient_evidence
         )
         
-    # Re-add Manual Edges
-    for u, v, data in manual_edges_backup:
+    # Re-add Preserved Edges
+    for u, v, data in preserved_edges:
         G.add_edge(u, v, **data)
     
     # Store calibration metadata in graph attributes for later analysis

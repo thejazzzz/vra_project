@@ -55,9 +55,19 @@ class GraphBuilderAgent:
         # Trigger if paper count matches OR PDF coverage is low
         paper_count = len(selected_papers)
          
-        # Calculate PDF coverage (Rely ONLY on status for robust check)
-        # If 'pdf_status' is missing, do not count as success.
-        successful_pdfs = sum(1 for p in selected_papers if p.get("pdf_status") == "success")
+        # Calculate PDF coverage: check top-level pdf_status first,
+        # then fall back to paper_metadata.pdf_status.
+        # Both 'success' and 'abstract_fallback' count toward graph viability.        
+        
+        successful_pdfs = sum(
+            1 for p in selected_papers 
+            if (
+                p.get("pdf_status")
+                if p.get("pdf_status") is not None
+                else (p.get("paper_metadata") or {}).get("pdf_status")
+            ) in ["success", "abstract_fallback"]
+        )
+
         
         pdf_success_rate = successful_pdfs / max(1, paper_count)
         eval_mode = EvaluationMode.STRICT

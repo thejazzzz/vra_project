@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from api.models.research_models import ResearchRequest
 from state.state_schema import VRAState
-from services.state_service import load_state_for_query, save_state_for_query
+from services.state_service import load_state_for_query, save_state_for_query, delete_state_for_query
 from services.research_service import process_research_task
 from agents.planner_agent import planner_agent
 from copy import deepcopy
@@ -396,4 +396,52 @@ def get_user_sessions(current_user: User = Depends(get_current_user), db: Sessio
         .order_by(ResearchSession.last_updated.desc())\
         .all()
     return {"sessions": sessions}
+
+
+@router.delete("/sessions/{session_id}")
+def delete_user_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a specific research session and its underlying workflow state.
+    """
+    user_id = current_user.id
+
+    # Find the session
+    session = db.query(ResearchSession).filter(ResearchSession.session_id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    # Verify ownership
+    if session.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden: You do not own this session")
+
+    # Guard against deleting a running session
+    active_states = {"running", "in_progress", "validating", "finalizing", "awaiting_analysis", "awaiting_hypothesis", "reviewing_hypotheses"}
+    if session.status and session.status.lower() in active_states:
+        raise HTTPException(
+            status_code=409, 
+            detail="Conflict: Cannot delete a session while it is actively running."
+        )
+
+    # Clean up workflow state block to free memory
+    delete_state_for_query(session_id, user_id)
+    
+    # Delete from ResearchSession history
+    db.delete(session)
+
+
+    log_action(
+        db,
+        user_id=user_id,
+        action="DELETE_SESSION",
+        target_id=session_id,
+        payload={},
+    )
+    db.commit()
+
+
+    return {"status": "success", "message": "Session deleted"}
 

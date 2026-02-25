@@ -148,12 +148,25 @@ export default function KnowledgeGraphPage() {
         if (!currentStep) return;
 
         // If we moved past graph review, go to gaps
-        if (
-            currentStep === "gap_analysis" ||
-            currentStep === "review_gaps" ||
-            currentStep === "awaiting_gap_review"
-        ) {
+        const gapSteps = [
+            "gap_analysis",
+            "review_gaps",
+            "awaiting_gap_review",
+            "awaiting_hypothesis",
+            "reviewing_hypotheses",
+        ];
+
+        const reportSteps = [
+            "awaiting_report_start",
+            "awaiting_report",
+            "awaiting_final_review",
+            "completed",
+        ];
+
+        if (gapSteps.includes(currentStep)) {
             router.push(`/research/${id}/gaps`);
+        } else if (reportSteps.includes(currentStep)) {
+            router.push(`/research/${id}/report`);
         }
     }, [currentStep, id, router]);
 

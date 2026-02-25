@@ -51,6 +51,15 @@ export function ReportDashboard({ sessionId }: ReportDashboardProps) {
                 // If null, it means not started
             }
         } catch (err: any) {
+            // Ignore transient network drops during hot-reloads if we already have a functional state
+            if (!err.response && state) {
+                console.warn(
+                    "Transient network error during polling (server might be restarting). Retrying next tick...",
+                );
+                setIsLoading(false);
+                return;
+            }
+
             console.error("Failed to fetch report state:", err);
 
             // Handle 404 as "Not Started" -> Show Init Gate
@@ -63,11 +72,11 @@ export function ReportDashboard({ sessionId }: ReportDashboardProps) {
                 return;
             }
 
-            // Don't block UI on transient network errors during polling
-            // We check against previous state via functional update if needed, but here simple check is fine
-            // actually 'state' in closure is stale if not in dep array, but we are setting state
+            // Block UI if we have no state, otherwise let polling try again
             if (!state) {
-                setError("Failed to load report state. Please try refreshing.");
+                setError(
+                    "Failed to connect to the backend. Please try refreshing or ensure the server is running.",
+                );
             }
         } finally {
             setIsLoading(false);

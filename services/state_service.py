@@ -65,3 +65,26 @@ def save_state_for_query(query: str, state: VRAState, user_id: str) -> int:
 
     finally:
         db.close()
+
+
+def delete_state_for_query(query: str, user_id: str) -> bool:
+    """Deletes a workflow state from the database."""
+    db = _get_db()
+    try:
+        row = (
+            db.query(WorkflowState)
+            .filter(WorkflowState.query == query)
+            .filter(WorkflowState.user_id == user_id)
+            .first()
+        )
+        if row:
+            db.delete(row)
+            db.commit()
+            return True
+        return False
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to delete workflow state.")
+        raise
+    finally:
+        db.close()

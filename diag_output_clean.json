@@ -1,0 +1,31 @@
+{
+  "1. concept_exists_in_graph": true,
+  "2. concept_origin": {
+    "introduced_via_global_analysis": false,
+    "introduced_via_paper_relations": true,
+    "introduced_via_paper_concepts": false,
+    "introduced_via_user_override": false
+  },
+  "3. structural_metrics": {
+    "paper_frequency": 0,
+    "degree": 1,
+    "neighbors": [
+      "online llms"
+    ],
+    "clustering_coefficient": 0,
+    "betweenness_centrality": "not_computed_for_performance"
+  },
+  "4. normalization_metrics": {
+    "max_benchmark": 4,
+    "normalized_coverage": 0.0,
+    "raw_gap_score_before_clipping": 1.0,
+    "final_confidence_score": 0.95
+  },
+  "5. eligibility_check": {
+    "eligible_under_current_rules": true,
+    "would_be_eligible_if_min_support_1": true,
+    "would_be_eligible_if_min_support_2": true
+  },
+  "6. classification_reason": "normalization_artifact",
+  "7. recommendation": "downgrade_to_inferred"
+}
