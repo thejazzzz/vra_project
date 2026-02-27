@@ -11,7 +11,8 @@ def detect_concept_trends(
     papers: List[Dict[str, Any]], 
     concepts_per_paper: Dict[str, List[str]],
     paper_relations: Optional[Dict[str, List[Dict[str, Any]]]] = None,
-    window: Optional[Tuple[str, str]] = None
+    window: Optional[Tuple[str, str]] = None,
+    use_citation_weighting: bool = False
 ) -> Dict[str, Any]:
     """
     Detects temporal trends with scientific validity enforcement.
@@ -105,30 +106,43 @@ def detect_concept_trends(
         total_papers_in_window += 1
         
         # Get concepts for this paper
-        categories = concepts_per_paper.get(pid, [])
+        categories = concepts_per_paper.get(pid, []) or []
         # Get relations for this paper (if available) -> simple list of connected concepts
         # We derive this from paper_relations or simple co-occurrence within the paper
         # For efficiency, we'll use co-occurrence within the paper's concept list as a proxy for "relations"
         # AND explicit relations if provided.
         
-        current_paper_concepts = set([c.lower().strip() for c in categories])
+        current_paper_concepts = list(set([c.lower().strip() for c in categories if c and isinstance(c, str)]))
+        
+        # Calculate Weight
+        weight = 1.0
+        if use_citation_weighting:
+            cc = paper.get("citationCount") or paper.get("citation_count") or 0
+            try:
+                weight = 1.0 + math.log1p(int(float(cc)))
+            except (ValueError, TypeError):
+                pass
         
         # Explicit relations for this paper
         explicit_relations = set()
         if paper_relations and pid in paper_relations:
             for rel in paper_relations[pid]:
-                src = rel.get("source", "").lower().strip()
-                tgt = rel.get("target", "").lower().strip()
-                if src and tgt:
-                    explicit_relations.add((src, tgt))
-                    explicit_relations.add((tgt, src))
+                if isinstance(rel, dict):
+                    src = rel.get("source", "")
+                    tgt = rel.get("target", "")
+                    if src and isinstance(src, str) and tgt and isinstance(tgt, str):
+                        src = src.lower().strip()
+                        tgt = tgt.lower().strip()
+                        if src and tgt:
+                            explicit_relations.add((src, tgt))
+                            explicit_relations.add((tgt, src))
 
-        for concept in categories:
-            c_norm = concept.lower().strip()
+        for concept in current_paper_concepts:
+            c_norm = concept
             
             # Update Concept Stats
             year_bucket = trends_data[c_norm][year_int]
-            year_bucket["count"] += 1
+            year_bucket["count"] += weight
             year_bucket["paper_ids"].add(pid)
             
             # Update Relations (Co-occurrence + Explicit)
@@ -165,28 +179,41 @@ def detect_concept_trends(
             scope = "Niche"
 
         # 2. Status & Growth
-        # Calculate Normalized Frequency (NCF) per year
+        # Calculate Normalized Frequency (NCF) per year with Zero-filling
         trend_vector = []
         ncf_values = []
         
         has_relations = False
         
-        for y in years:
-            data = yearly_data[y]
-            ncf = data["count"] / max(1, global_papers_per_year[y])
+        if years:
+            full_year_range = list(range(years[0], years[-1] + 1))
+        else:
+            full_year_range = []
+
+        for y in full_year_range:
+            if y in yearly_data:
+                data = yearly_data[y]
+                raw_count = data["count"]
+                paper_ids = list(data["paper_ids"])
+                # Top 3 related concepts for this year
+                top_related_tuples = sorted(data["relations"].items(), key=lambda x: x[1], reverse=True)[:3]
+                top_related = [k for k, v in top_related_tuples]
+                if top_related: 
+                    has_relations = True
+            else:
+                raw_count = 0.0
+                paper_ids = []
+                top_related = []
+                
+            ncf = raw_count / max(1, global_papers_per_year.get(y, 0) or 1)
             ncf_values.append(ncf)
-            
-            # Top 3 related concepts for this year
-            top_related = sorted(data["relations"].items(), key=lambda x: x[1], reverse=True)[:3]
-            if top_related: 
-                has_relations = True
             
             trend_vector.append({
                 "year": y,
-                "count": data["count"],
+                "count": raw_count,
                 "norm_freq": round(ncf, 4),
-                "paper_ids": list(data["paper_ids"]), # Provenance
-                "top_related": [k for k, v in top_related]
+                "paper_ids": paper_ids, # Provenance
+                "top_related": top_related
             })
 
         # Growth Rate (Last year vs Prev year)
@@ -221,14 +248,15 @@ def detect_concept_trends(
             status = "New"
 
         # 3. Stability (Variance of NCF)
+        variance_val = 0.0
         if len(ncf_values) < 2:
             stability = "Transient" # Too short to judge
         else:
             # Calculate variance of NCF
             try:
-                variance = statistics.variance(ncf_values) if len(ncf_values) > 1 else 0
+                variance_val = statistics.variance(ncf_values) if len(ncf_values) > 1 else 0.0
                 # Heuristic thresholds for variance
-                if variance > 0.05: # High fluctuation
+                if variance_val > 0.05: # High fluctuation
                     stability = "Volatile"
                 else:
                     stability = "Stable"
@@ -243,7 +271,7 @@ def detect_concept_trends(
         sparsity = 1.0 - (active_years / max(1, year_span))
         
         # Validation boost: if it has relations or >1 paper
-        is_valid = (total_count > 1) or has_relations
+        is_valid = (total_count >= 2) and has_relations
         validation_factor = 1.0 if is_valid else 0.5
         
         raw_conf = math.log1p(total_count) * 0.2 # Scale log(100) ~ 0.92
@@ -289,9 +317,10 @@ def detect_concept_trends(
             "is_trend_valid": is_valid,
             "growth_rate": round(growth_rate, 2),
             "trend_confidence": round(confidence, 2),
-            "total_count": total_count,
+            "variance": round(variance_val, 4),
+            "total_count": round(total_count, 2),
             "trend_vector": trend_vector,
-            "last_active_year": years[-1]
+            "last_active_year": years[-1] if years else 0
         }
         
     return {

@@ -17,8 +17,15 @@ import { Label } from "@/components/ui/label";
 import { plannerApi } from "@/lib/api";
 import { v4 as uuidv4 } from "uuid";
 import { ResearchProgress } from "./research-progress";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Info } from "lucide-react";
 import { AudienceSelector } from "./audience-selector";
+import { Switch } from "@/components/ui/switch";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { LocalPaperUpload } from "./local-paper-upload";
 import { LocalPaperList } from "./local-paper-list";
 import { LocalPaper, UploadPaperResponse } from "@/types";
@@ -31,6 +38,7 @@ export function NewResearchDialog({
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [audience, setAudience] = useState("general");
+    const [useCitationWeighting, setUseCitationWeighting] = useState(false);
     const [isResearching, setIsResearching] = useState(false); // Replaces simple loading
     const [taskId, setTaskId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -56,7 +64,13 @@ export function NewResearchDialog({
 
             // Fire and forget - Progress component handles the waiting/polling
             // We await it here just to catch immediate startup errors (401 etc)
-            await plannerApi.plan(query, includeIds, audience, newTaskId);
+            await plannerApi.plan(
+                query,
+                includeIds,
+                audience,
+                newTaskId,
+                useCitationWeighting,
+            );
 
             // Note: We don't redirect here immediately anymore.
             // The ResearchProgress component will call onComplete when it's actually done.
@@ -171,6 +185,38 @@ export function NewResearchDialog({
                             audience={audience}
                             setAudience={setAudience}
                         />
+
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right flex items-center justify-end gap-1">
+                                Citation Impact
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Info className="h-3 w-3 text-muted-foreground" />
+                                        </TooltipTrigger>
+                                        <TooltipContent side="right">
+                                            <p className="w-[200px] text-xs">
+                                                When active, trend frequencies
+                                                are weighted logarithmically by
+                                                their citation counts,
+                                                prioritizing high-impact
+                                                research over low-impact noise.
+                                            </p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </Label>
+                            <div className="col-span-3 flex items-center gap-2">
+                                <Switch
+                                    checked={useCitationWeighting}
+                                    onCheckedChange={setUseCitationWeighting}
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                    Weight trends by paper citations (Research
+                                    Grade)
+                                </span>
+                            </div>
+                        </div>
 
                         <div className="grid grid-cols-4 items-start gap-4">
                             <Label className="text-right pt-2">

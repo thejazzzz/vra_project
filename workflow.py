@@ -64,7 +64,8 @@ async def run_step(state: VRAState) -> VRAState:
                 trend_result = detect_concept_trends(
                     state.get("selected_papers", []),
                     state.get("paper_concepts", {}),
-                    paper_relations=state.get("paper_relations", {})
+                    paper_relations=state.get("paper_relations", {}),
+                    use_citation_weighting=state.get("use_citation_weighting", False)
                 )
                 state["concept_trends"] = trend_result.get("trends", {})
                 logger.info(f"Trend Analysis Metadata: {trend_result.get('metadata')}")

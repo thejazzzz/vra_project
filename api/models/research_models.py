@@ -7,6 +7,7 @@ class ResearchRequest(BaseModel):
     audience: Literal["general", "phd", "industry", "rd"] = "general"
     include_paper_ids: list[str] = Field(default_factory=list)
     task_id: Optional[str] = None
+    use_citation_weighting: bool = False
 
 
 class ResearchResponse(BaseModel):

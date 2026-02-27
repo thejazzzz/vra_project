@@ -216,7 +216,6 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                                         {data.stability || "Unknown Stability"}
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                        {/* Improved Stability Explanation */}
                                         {data.stability === "Volatile"
                                             ? "High variance in normalized frequency"
                                             : data.stability === "Stable"
@@ -224,6 +223,23 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                                               : "Based on NCF variance analysis"}
                                     </TooltipContent>
                                 </UITooltip>
+
+                                {typeof data.variance === "number" && (
+                                    <UITooltip>
+                                        <TooltipTrigger className="flex items-center gap-1 cursor-help">
+                                            <span className="text-[10px] uppercase font-semibold text-muted-foreground/70">
+                                                Var:
+                                            </span>
+                                            <span className="font-mono">
+                                                {data.variance.toFixed(4)}
+                                            </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            Statistical variance of normalized
+                                            frequency
+                                        </TooltipContent>
+                                    </UITooltip>
+                                )}
                             </TooltipProvider>
                         </CardDescription>
                     </div>
@@ -247,7 +263,9 @@ export function TrendCard({ concept, data }: TrendCardProps) {
                                     : "text-muted-foreground"
                             }
                         >
-                            {(growth * 100).toFixed(1)}% Growth
+                            {data.status === "New"
+                                ? "Baseline (New)"
+                                : `${growth > 0 ? "+" : ""}${(growth * 100).toFixed(1)}% Growth`}
                         </span>
                     </div>
                     {/* Toggle Switch */}

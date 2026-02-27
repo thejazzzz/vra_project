@@ -98,6 +98,7 @@ async def plan_task(payload: ResearchRequest, current_user: User = Depends(get_c
             current_step=None,
             user_feedback=None,
             audience="industry",
+            use_citation_weighting=payload.use_citation_weighting,
         )
     
     # Create persistent session in DB

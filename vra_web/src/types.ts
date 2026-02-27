@@ -54,6 +54,7 @@ export interface TrendMetrics {
     trend_confidence: number; // 0.0 - 1.0
     is_trend_valid: boolean;
     growth_rate: number;
+    variance?: number;
     total_count: number;
     last_active_year: number;
     trend_vector: Array<{
