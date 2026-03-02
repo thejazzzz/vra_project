@@ -593,13 +593,25 @@ def compute_citation_metrics(CG, current_year):
     communities = compute_communities(CG)
     
     for node in CG.nodes:
-        CG.nodes[node]["pagerank"] = pagerank.get(node, 0.0)
-        CG.nodes[node]["betweenness"] = betweenness.get(node, 0.0)
+        pr_val = pagerank.get(node, 0.0)
+        bw_val = betweenness.get(node, 0.0)
+        
+        CG.nodes[node]["pagerank"] = pr_val
+        CG.nodes[node]["betweenness"] = bw_val
         CG.nodes[node]["community"] = communities.get(node, -1)
+        
+        # Frontend Display Normalized Metrics
+        CG.nodes[node]["display_size"] = max(3.0, pr_val * 200) # Base size 3, scaled by pagerank
+        CG.nodes[node]["bridge_flag"] = bw_val > 0.05 # Threshold for golden outline
     
     compute_age_normalized(CG, pagerank, current_year)
     compute_entropy(CG)
     compute_velocity(CG, current_year)
+    
+    # Needs velocity for glow, run as a secodary loop
+    for node in CG.nodes:
+        v_val = CG.nodes[node].get("citation_velocity", 0.0)
+        CG.nodes[node]["display_glow"] = math.log1p(v_val)
 
 
 def enrich_knowledge_graph(kg_data: Dict, cg_data: Dict) -> Dict:

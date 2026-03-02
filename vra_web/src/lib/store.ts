@@ -12,7 +12,7 @@ export const useResearchStore = create<ResearchState>((set, get) => {
     // Helper to centralize submission logic with error handling and state management
     const handleSubmission = async (
         apiCall: () => Promise<any>,
-        query: string
+        query: string,
     ) => {
         set({ currentStep: "processing", error: null });
         try {
@@ -31,6 +31,7 @@ export const useResearchStore = create<ResearchState>((set, get) => {
         papers: [],
         selectedPapers: [],
         knowledgeGraph: { nodes: [], links: [] },
+        citationGraph: { nodes: [], links: [] },
         authorGraph: { nodes: [], links: [] },
         trends: {},
         gaps: [],
@@ -88,6 +89,13 @@ export const useResearchStore = create<ResearchState>((set, get) => {
                                   nodes: [],
                                   links: [],
                               },
+                    citationGraph:
+                        state.citation_graph && state.citation_graph.nodes
+                            ? state.citation_graph
+                            : {
+                                  nodes: [],
+                                  links: [],
+                              },
                     draftReport: state.draft_report || "",
                     isLoading: false,
                 });
@@ -118,14 +126,14 @@ export const useResearchStore = create<ResearchState>((set, get) => {
         submitReview: async (payload: ReviewPayload) => {
             await handleSubmission(
                 () => plannerApi.review(payload),
-                payload.query
+                payload.query,
             );
         },
 
         submitGraphReview: async (payload: GraphReviewPayload) => {
             await handleSubmission(
                 () => plannerApi.reviewGraph(payload),
-                payload.query
+                payload.query,
             );
         },
 

@@ -97,8 +97,8 @@ export interface ResearchState {
     papers: Paper[];
     selectedPapers: Paper[];
 
-    // Graphs & Analysis
     knowledgeGraph: { nodes: GraphNode[]; links: GraphLink[]; graph?: any };
+    citationGraph: { nodes: any[]; links: any[]; graph?: any };
 
     authorGraph: {
         nodes: any[];
@@ -208,6 +208,7 @@ export interface BackendResearchState {
         };
     };
     knowledge_graph: { nodes: GraphNode[]; links: GraphLink[]; graph?: any };
+    citation_graph?: { nodes: any[]; links: any[]; graph?: any };
 
     draft_report: string;
     report_state?: ReportState; // Added logic from merged interface
