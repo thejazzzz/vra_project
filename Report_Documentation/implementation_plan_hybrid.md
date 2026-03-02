@@ -1,5 +1,8 @@
 # Implementation Plan: Hybrid Execution Strategy for Report Generation (Refined)
 
+> [!WARNING]
+> **DEPRECATED**: This Hybrid LLM Strategy (which explicitly mixed Cloud and Local models) has been superseded by a **Local-First LLM Architecture** using Ollama natively to ensure zero API costs and maximum data privacy. This document remains for historical context only.
+
 ## Goal
 
 Upgrade the `SectionCompiler` to support a **Hybrid Execution Strategy**, routing "High-Reasoning" tasks (Abstract, Refinement) to state-of-the-art cloud models (e.g., GPT-4o) and "High-Volume" tasks (Expansion, Drafting) to cost-efficient local models.
@@ -28,11 +31,11 @@ class CompilationPhase(Enum):
 
 #### New Environment Variables
 
--   `VRA_HYBRID_MODE` (bool, default: `False`)
--   `PRIMARY_PROVIDER` (defaults to current `REPORT_PROVIDER` or `openai`)
--   `SECONDARY_PROVIDER` (defaults to `local`)
--   `SECONDARY_MODEL` (defaults to `llama3:8b`)
--   `MAX_CLOUD_CALLS` (int, default: 15)
+- `VRA_HYBRID_MODE` (bool, default: `False`)
+- `PRIMARY_PROVIDER` (defaults to current `REPORT_PROVIDER` or `openai`)
+- `SECONDARY_PROVIDER` (defaults to `local`)
+- `SECONDARY_MODEL` (defaults to `llama3:8b`)
+- `MAX_CLOUD_CALLS` (int, default: 15)
 
 ### 2. Logic Updates
 
@@ -53,35 +56,33 @@ Implement `_resolve_provider(phase: CompilationPhase, section_type: str) -> (LLM
 
 #### B. Cost & Safety Guardrails
 
--   **Cloud Call Tracking**: Increment `state["metrics"]["cloud_calls"]` when a cloud provider is used.
--   **Cost Limit Fallback**: If `cloud_calls >= MAX_CLOUD_CALLS`, raise `CostLimitExceededError`. Catch this error in `compile` and **fallback to`SECONDARY_PROVIDER`** (Local) for the remainder of the report. Log: `[Hybrid] Event=FALLBACK | Reason=COST_LIMIT`. _Note: distinct from failure-based circuit breakers._
--   **Provider Error Fallback**: Catch timeouts/API errors from `PRIMARY_PROVIDER` (e.g., 500s). Retry with backoff. If exhausted, **fallback to `SECONDARY_PROVIDER`**. Log: `[Hybrid] Phase=... | Event=FALLBACK | From=PRIMARY | To=SECONDARY | Error=...`.
--   **Secondary Failure**: If `SECONDARY_PROVIDER` fails, log `[Hybrid] Event=FALLBACK_FAILED` and raise exception.
--   **Logging**: Structured logs: `[Hybrid] Phase=REFINE | Section=1.3 | Provider=OPENAI | Model=gpt-4o`
+- **Cloud Call Tracking**: Increment `state["metrics"]["cloud_calls"]` when a cloud provider is used.
+- **Cost Limit Fallback**: If `cloud_calls >= MAX_CLOUD_CALLS`, raise `CostLimitExceededError`. Catch this error in `compile` and **fallback to`SECONDARY_PROVIDER`** (Local) for the remainder of the report. Log: `[Hybrid] Event=FALLBACK | Reason=COST_LIMIT`. _Note: distinct from failure-based circuit breakers._
+- **Provider Error Fallback**: Catch timeouts/API errors from `PRIMARY_PROVIDER` (e.g., 500s). Retry with backoff. If exhausted, **fallback to `SECONDARY_PROVIDER`**. Log: `[Hybrid] Phase=... | Event=FALLBACK | From=PRIMARY | To=SECONDARY | Error=...`.
+- **Secondary Failure**: If `SECONDARY_PROVIDER` fails, log `[Hybrid] Event=FALLBACK_FAILED` and raise exception.
+- **Logging**: Structured logs: `[Hybrid] Phase=REFINE | Section=1.3 | Provider=OPENAI | Model=gpt-4o`
 
 ### 3. File Modifications
 
 #### [MODIFY] [section_compiler.py](file:///c:/Users/theja/OneDrive/Documents/AI%20PRC22CA027/MAIN%20PROJECT/vra_project/services/reporting/section_compiler.py)
 
--   **Imports**: Add `Enum` and `OS`.
--   **Classes**: Define `CompilationPhase(Enum)`.
--   **Attributes**: Add `cloud_call_count` tracking (or use ReportState metrics).
--   **Methods**:
-    -   `_resolve_provider(phase: CompilationPhase, section_type: str)`
-    -   Update `_draft_skeleton`, `_expand_content`, `_refine_content`, `_compile_abstract` to use `_resolve_provider` and pass the `CompilationPhase` enum.
-    -   Update `_compile_abstract` to force `CompilationPhase.ABSTRACT`.
-    -   Implement Cloud Guardrail check before generation.
+- **Imports**: Add `Enum` and `OS`.
+- **Classes**: Define `CompilationPhase(Enum)`.
+- **Attributes**: Add `cloud_call_count` tracking (or use ReportState metrics).
+- **Methods**:
+    - `_resolve_provider(phase: CompilationPhase, section_type: str)`
+    - Update `_draft_skeleton`, `_expand_content`, `_refine_content`, `_compile_abstract` to use `_resolve_provider` and pass the `CompilationPhase` enum.
+    - Update `_compile_abstract` to force `CompilationPhase.ABSTRACT`.
+    - Implement Cloud Guardrail check before generation.
 
 ### 4. Step-by-Step Execution Flow (Hybrid Example)
 
 1. **Section 1.1 (Introduction)**
-
     - **Draft**: `_resolve_provider(DRAFT, INTRO)` -> **Primary** (Reasoning).
     - **Expand**: `_resolve_provider(EXPAND, INTRO)` -> **Secondary** (Volume).
     - **Refine**: `_resolve_provider(REFINE, INTRO)` -> **Primary** (Polish).
 
 2. **Section 4.1 (Methodology)**
-
     - **Draft**: `_resolve_provider(DRAFT, METHOD)` -> **Secondary** (Local, standard template).
     - **Expand**: `_resolve_provider(EXPAND, METHOD)` -> **Secondary** (Local).
     - **Refine**: `_resolve_provider(REFINE, METHOD)` -> **Primary** (Polish).

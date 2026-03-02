@@ -8,9 +8,9 @@
 - **Constructed** dynamic **Knowledge, Citation, and Author Graphs** using NetworkX to visualize research landscapes and connectivity.
 - **Designed** a **Gap Analysis Agent** capable of identifying both **Conceptual Gaps** (under-explored topics) and **Structural Gaps** (disconnected clusters).
 - **Implemented** LLM-based **Hypothesis Generation** to propose novel, testable research directions rooted in identified graph gaps.
-- **Integrated** a **Hybrid Execution Strategy** for efficient reporting, smart-routing "High Reasoning" tasks to GPT-4o and "Drafting" tasks to local models.
+- **Integrated** a **Local-First LLM Architecture** using Ollama for efficient, secure, and cost-free "High Reasoning" tasks (Drafting, Abstract Generation, Refinement).
 - **Created** a responsive **Research Dashboard** featuring dark mode, interactive graph visualizations, and real-time workflow progress tracking.
-- **Developed** a comprehensive **Reporting Agent** that synthesizes findings into structured markdown reports.
+- **Developed** a comprehensive **Reporting Agent** that synthesizes findings and features a robust report formatter exporting natively to **Markdown, DOCX, PDF, and LaTeX**.
 
 ### REMAINING/ENHANCEMENTS
 
@@ -18,4 +18,3 @@
 - **Calibrate** graph algorithms (Trend Detection, Gap Confidence) using larger datasets to refine "Saturated" vs "Emerging" classifications.
 - **Integrate** a version control system for Knowledge Graphs (`kg_v1`, `kg_v2`) to allow manual user refinements and branching.
 - **Perform** extensive validation of generated hypotheses against "ground truth" future works to benchmark agent performance.
-- **Expand** the Hybrid Strategy with more sophisticated cost guardrails and provider fallbacks.

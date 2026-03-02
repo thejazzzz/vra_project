@@ -128,6 +128,14 @@ The system is designed to be resilient to common external failures:
 - **API Resilience**: If primary paper sources (e.g., Semantic Scholar) fail, the system falls back to secondary sources (arXiv) or cached results.
 - **Graph Construction**: If a Knowledge Graph cannot be fully populated due to sparse data, the system degrades gracefully to a "Concept-Only" graph, ensuring the user can still proceed with limited analysis.
 - **Gap Analysis Weakness**: If no strong structural gaps are found (low confidence), the Hypothesis Generation agent downgrades its output to "Future Directions" rather than specific "Novel Hypotheses," maintaining intellectual honesty.
+- **Local Generation Focus**: All generation, review, and reporting tasks rely entirely on Local LLMs (e.g., Ollama). This guarantees robust generation decoupled from cloud dependencies, preventing API quota errors or unexpected billing overruns while ensuring strict data privacy.
+
+## 7. Reporting & Formatting
+
+The final phase of the VRA pipeline converts raw output into academic-grade documentation:
+
+- **Native Exporters**: The Reporting Agent utilizes dedicated formatters to export the multi-stage research data natively to `PDF`, `DOCX`, `Markdown`, and `LaTeX`, preserving structured elements like citations, headers, and reference tables contextually without external dependencies.
+- **Interactive Review**: Users preview live compiled Markdown in the dashboard before initiating large file exports.
 
 ## 7. Limitations
 
