@@ -187,7 +187,10 @@ export function NewResearchDialog({
                         />
 
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label className="text-right flex items-center justify-end gap-1">
+                            <Label
+                                htmlFor="citation-impact"
+                                className="text-right flex items-center justify-end gap-1"
+                            >
                                 Citation Impact
                                 <TooltipProvider>
                                     <Tooltip>
@@ -208,6 +211,7 @@ export function NewResearchDialog({
                             </Label>
                             <div className="col-span-3 flex items-center gap-2">
                                 <Switch
+                                    id="citation-impact"
                                     checked={useCitationWeighting}
                                     onCheckedChange={setUseCitationWeighting}
                                 />

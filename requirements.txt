@@ -19,3 +19,4 @@ python-jose[cryptography]
 python-docx
 jinja2
 fpdf2
+python-louvain

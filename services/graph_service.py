@@ -5,6 +5,9 @@ from typing import Dict, List, Any, Optional
 import networkx as nx
 from networkx.readwrite import json_graph
 import re
+import math
+from collections import Counter
+import community as community_louvain
 
 from services.graph_persistence_service import load_graphs, save_graphs
 from services.graph_analytics_service import GraphAnalyticsService
@@ -476,6 +479,9 @@ def build_citation_graph(selected_papers: List[Dict]) -> Dict:
     G = nx.DiGraph()
     s2_to_canonical: Dict[str, str] = {}
 
+    import datetime
+    current_year = datetime.datetime.now().year
+
     # Create paper nodes
     for paper in selected_papers:
         canonical_id = paper.get("canonical_id")
@@ -487,6 +493,8 @@ def build_citation_graph(selected_papers: List[Dict]) -> Dict:
             canonical_id,
             type="paper",
             title=paper.get("title", ""),
+            year=paper.get("metadata", {}).get("year") or paper.get("year"),
+            citation_count=paper.get("metadata", {}).get("citationCount") or paper.get("citationCount") or 0
         )
 
         metadata = paper.get("metadata", {}) or {}
@@ -515,7 +523,83 @@ def build_citation_graph(selected_papers: List[Dict]) -> Dict:
                 edge_count += 1
 
     logger.info("📎 Citation Graph: %d nodes, %d edges", G.number_of_nodes(), edge_count)
+    
+    import datetime
+    current_year = datetime.datetime.now().year
+    compute_citation_metrics(G, current_year)
+    
     return json_graph.node_link_data(G)
+
+
+def compute_betweenness(citation_graph):
+    return nx.betweenness_centrality(
+        citation_graph,
+        normalized=True,
+        k=min(100, len(citation_graph)),  # sampling for scalability
+        seed=42 # deterministic sampling
+    )
+
+def compute_velocity(CG, current_year):
+    for node in CG.nodes:
+        year = CG.nodes[node].get("year")
+        if not year:
+            CG.nodes[node]["citation_velocity"] = 0.0
+            continue
+        age = max(current_year - year, 1)
+        citation_count = CG.nodes[node].get("citation_count", 0)
+        CG.nodes[node]["citation_velocity"] = citation_count / age
+
+def compute_communities(CG):
+    undirected = CG.to_undirected()
+    try:
+        partition = community_louvain.best_partition(undirected)
+        return partition
+    except Exception as e:
+        logger.warning(f"Community detection failed: {e}")
+        return {}
+
+def compute_age_normalized(CG, pagerank_scores, current_year):
+    for node in CG.nodes:
+        year = CG.nodes[node].get("year") or current_year
+        age = max(current_year - year, 1)
+        adjusted = pagerank_scores.get(node, 0.0) / math.log(age + 1)
+        CG.nodes[node]["age_normalized_influence"] = adjusted
+
+def compute_entropy(CG):
+    for node in CG.nodes:
+        cited = list(CG.successors(node))
+        communities = [CG.nodes[c].get("community") for c in cited if "community" in CG.nodes[c]]
+        
+        if not communities:
+            CG.nodes[node]["citation_entropy"] = 0.0
+            continue
+        
+        count = Counter(communities)
+        total = sum(count.values())
+        
+        entropy = 0.0
+        for freq in count.values():
+            p = freq / total
+            entropy -= p * math.log(p)
+        
+        CG.nodes[node]["citation_entropy"] = entropy
+
+def compute_citation_metrics(CG, current_year):
+    if len(CG) == 0:
+        return
+    pagerank = nx.pagerank(CG, alpha=0.85)
+    
+    betweenness = compute_betweenness(CG)
+    communities = compute_communities(CG)
+    
+    for node in CG.nodes:
+        CG.nodes[node]["pagerank"] = pagerank.get(node, 0.0)
+        CG.nodes[node]["betweenness"] = betweenness.get(node, 0.0)
+        CG.nodes[node]["community"] = communities.get(node, -1)
+    
+    compute_age_normalized(CG, pagerank, current_year)
+    compute_entropy(CG)
+    compute_velocity(CG, current_year)
 
 
 def enrich_knowledge_graph(kg_data: Dict, cg_data: Dict) -> Dict:
@@ -539,12 +623,19 @@ def enrich_knowledge_graph(kg_data: Dict, cg_data: Dict) -> Dict:
         pagerank_scores = nx.pagerank(G_cg, alpha=0.85)
     except:
         pagerank_scores = {}
+        
+    betweenness = nx.get_node_attributes(G_cg, "betweenness")
+    velocity = nx.get_node_attributes(G_cg, "citation_velocity")
+    entropy = nx.get_node_attributes(G_cg, "citation_entropy")
 
     enriched = 0
     for node_id in G_kg.nodes:
         if node_id in G_cg.nodes:
             G_kg.nodes[node_id]["citation_count"] = citation_counts.get(node_id, 0)
             G_kg.nodes[node_id]["pagerank"] = pagerank_scores.get(node_id, 0.0)
+            G_kg.nodes[node_id]["betweenness"] = betweenness.get(node_id, 0.0)
+            G_kg.nodes[node_id]["citation_velocity"] = velocity.get(node_id, 0.0)
+            G_kg.nodes[node_id]["citation_entropy"] = entropy.get(node_id, 0.0)
             enriched += 1
 
     logger.info("🔗 Cross-Graph: Enriched %d KG nodes", enriched)

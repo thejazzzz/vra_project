@@ -41,7 +41,7 @@ def detect_concept_trends(
             - "last_active_year": int
             - "trend_vector": List[Dict] (Yearly breakdown)
                 - "year": int
-                - "count": int
+                - "count": float (or int|float) Note: counts may be fractional when citation weighting is enabled. Cast to int downstream if integer counts are strictly required.
                 - "norm_freq": float
                 - "paper_ids": List[str]
                 - "top_related": List[str]

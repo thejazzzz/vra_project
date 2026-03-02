@@ -90,6 +90,29 @@ class GraphBuilderAgent:
         # ----------------------------
         citation_graph = build_citation_graph(selected_papers)
 
+        # Extract citation metrics for state
+        metrics_dict = {
+            "pagerank": {},
+            "betweenness": {},
+            "velocity": {},
+            "entropy": {},
+            "communities": {},
+            "age_normalized_influence": {}
+        }
+        for node in citation_graph.get("nodes", []):
+            nid = node.get("id")
+            if nid is None:
+                logger.warning("Skipping citation graph node with missing id")
+                continue
+            metrics_dict["pagerank"][nid] = node.get("pagerank", 0.0)
+            metrics_dict["betweenness"][nid] = node.get("betweenness", 0.0)
+            metrics_dict["velocity"][nid] = node.get("citation_velocity", 0.0)
+            metrics_dict["entropy"][nid] = node.get("citation_entropy", 0.0)
+            metrics_dict["communities"][nid] = node.get("community", -1)
+            metrics_dict["age_normalized_influence"][nid] = node.get("age_normalized_influence", 0.0)
+            
+        state["citation_metrics"] = metrics_dict
+
         # ----------------------------
         # Level 3: Cross-Graph Enrichment
         # ----------------------------

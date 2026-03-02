@@ -1,0 +1,20 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.7, pytest-7.4.4, pluggy-1.0.0
+rootdir: C:\Users\theja\OneDrive\Documents\AI PRC22CA027\MAIN PROJECT\vra_project
+plugins: anyio-3.7.1
+collected 0 items / 1 error
+
+=================================== ERRORS ====================================
+_______________ ERROR collecting tests/test_citation_metrics.py _______________
+ImportError while importing test module 'C:\Users\theja\OneDrive\Documents\AI PRC22CA027\MAIN PROJECT\vra_project\tests\test_citation_metrics.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\theja\anaconda3\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+tests\test_citation_metrics.py:4: in <module>
+    from services.graph_service import (
+E   ModuleNotFoundError: No module named 'services'
+=========================== short test summary info ===========================
+ERROR tests/test_citation_metrics.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+============================== 1 error in 1.52s ===============================

@@ -40,6 +40,20 @@ class HypothesisGenerationAgent:
         # Select top gaps to focus on (Confidence > 0.6)
         active_gaps = [g for g in gaps if g.get("confidence", 0) > 0.6][:3]
         
+        metrics = state.get("citation_metrics", {})
+        betweenness_dict = metrics.get("betweenness", {})
+        
+        bridge_papers = []
+        if state.get("selected_papers") and betweenness_dict:
+             for p in state["selected_papers"]:
+                 pid = p.get("canonical_id")
+                 if pid and betweenness_dict.get(pid, 0.0) > 0.05: # Threshold for bridge
+                     bridge_papers.append(p.get("title", pid))
+                     
+        bridge_context = ""
+        if bridge_papers:
+            bridge_context = "\n\nHIGH-BETWEENNESS BRIDGE PAPERS (Interdisciplinary hubs):\n" + "\n".join([f"- {title}" for title in bridge_papers[:5]])
+        
         # If no strong gaps, use general context
         if not active_gaps:
              context_str = "No specific structural gaps found. Focus on general emerging trends."
@@ -81,9 +95,11 @@ class HypothesisGenerationAgent:
         1. Hypotheses must bridge identified Gaps or extend Emerging Trends.
         2. Must be specific (avoid vague statements).
         3. Must propose a mechanism or relationship.
+        4. IMPORTANT: If a hypothesis builds on a HIGH-BETWEENNESS BRIDGE PAPER, explicitly flag it and boost its novelty score.
         
         CONTEXT:
         {context_str}
+        {bridge_context}
         
         TRENDS:
         {json.dumps(trends, indent=2) if trends else "No trend data available."}

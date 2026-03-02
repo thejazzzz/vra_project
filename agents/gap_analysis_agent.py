@@ -37,6 +37,11 @@ class GapAnalysisAgent:
             logger.warning("No knowledge graph found. Skipping gap analysis.")
             return state
 
+        metrics = state.get("citation_metrics", {})
+        betweenness_dict = metrics.get("betweenness", {})
+        velocity_dict = metrics.get("velocity", {})
+        entropy_dict = metrics.get("entropy", {})
+
         try:
             KG = nx.node_link_graph(kg_data)
         except Exception as e:
@@ -97,11 +102,33 @@ class GapAnalysisAgent:
                 clustering = 0
 
             # 3. Confidence Formula
-            confidence = (
+            base_confidence = (
                 0.5 * (1.0 - norm_coverage) +
                 0.3 * (1.0 - clustering) +
                 0.2 * 1.0 
             )
+            
+            # Phase 4 Citation Metrics Boost
+            avg_betweenness, avg_velocity, avg_entropy = 0.0, 0.0, 0.0
+            if paper_count > 0:
+                neighbors = get_paper_neighbors(concept)
+                n = len(neighbors)
+                if n > 0:
+                    b_tot = sum(betweenness_dict.get(p, 0.0) for p in neighbors)
+                    v_tot = sum(velocity_dict.get(p, 0.0) for p in neighbors)
+                    e_tot = sum(entropy_dict.get(p, 0.0) for p in neighbors)
+                    avg_betweenness = b_tot / n
+                    avg_velocity = v_tot / n
+                    avg_entropy = e_tot / n
+            
+            import math
+            # Normalize velocity (since it can easily be 100+ for fast papers)
+            norm_velocity = math.log1p(avg_velocity) / 10.0
+            norm_entropy = min(avg_entropy / 2.0, 1.0)
+            
+            # HypothesisScore = StructuralHoleScore + alpha*avg(betweenness) + beta*avg(velocity) + gamma*entropy
+            structural_bonus = (0.2 * avg_betweenness) + (0.3 * norm_velocity) + (0.15 * norm_entropy)
+            confidence = base_confidence + structural_bonus
             
             # 4. Nature Classification
             nature = "nascent" if paper_count <= 1 else "under_explored"
