@@ -1,0 +1,8 @@
+{
+    "Query Parsing Execution Time": 0.0,
+    "Literature Retrieval Execution Time": 1.1441516876220703,
+    "Extraction Execution Time": 20.439250230789185,
+    "Graph Construction Execution Time": 1.2392818927764893,
+    "Gap Analysis Execution Time": 0.00872039794921875,
+    "Report Section Generation Time": 0.12554001808166504
+}
