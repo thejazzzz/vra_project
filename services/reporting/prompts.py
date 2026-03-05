@@ -89,8 +89,9 @@ Write a formal academic subsection based strictly on the provided inputs.
 
 CONSTRAINTS:
 - Use third-person academic tone.
-- Use only the provided facts and concepts.
-- Do not add citations, statistics, or examples unless provided.
+- CRITICAL: Use ONLY the provided facts and concepts. Do not invent information to meet the word count.
+- If the target word count cannot be met with the provided facts, just write what is factual and stop. Do not hallucinate filler content.
+- Do not add citations, statistics, or examples unless provided via the INPUT FACTS.
 - Do not conclude the chapter.
 - Target length: {target_words} words.
 
@@ -98,7 +99,7 @@ SECTION DETAILS:
 TITLE: {title}
 DESCRIPTION: {description}
 
-INPUT FACTS:
+INPUT FACTS (AUTHORITATIVE):
 {context}
 
 OUTPUT RULES:
@@ -113,15 +114,18 @@ Expand the following academic text to approximately {target_words} words.
 
 SECTION TYPE: {section_type}
 
+AUTHORITATIVE EVIDENCE (STRICT ANCHORING):
+{anchors}
+
 ALLOWED ACTIONS:
 - Clarify ideas already present
-- Add explanations or elaboration
+- Add explanations or elaboration grounded ONLY in the AUTHORITATIVE EVIDENCE
 - Improve transitions
 
-FORBIDDEN ACTIONS:
-- Adding new facts, concepts, datasets, or claims
-- Adding citations or examples
-- Changing meaning or structure
+FORBIDDEN ACTIONS (CRITICAL!):
+- DO NOT invent or hallucinate new facts, concepts, datasets, or claims not found in the AUTHORITATIVE EVIDENCE.
+- DO NOT add citations or examples that are not explicitly provided.
+- DO NOT summarize or conclude the entire report.
 
 OUTPUT RULES:
 - Plain text only
@@ -129,9 +133,6 @@ OUTPUT RULES:
 
 TEXT TO EXPAND:
 {content}
-
-ALLOWED FACTS (STRICT ANCHORING):
-{anchors}
 """,
 
     "refine_content": """

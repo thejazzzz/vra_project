@@ -166,8 +166,8 @@ class SectionCompiler:
         # 3. Expansion Loop
         section["compilation_phase"] = "EXPANDING"
         passes = 0
-        MAX_PASSES = 5
-        MIN_DELTA = 100 # Minimum word growth to justify another pass
+        MAX_PASSES = 2 # Reduced to prevent model hallucination loops
+        MIN_DELTA = 150 # Require substantial addition to keep expanding
         
         while current_words < section["target_words"] and passes < MAX_PASSES:
             logger.info(f"Compiler: Expansion Pass {passes+1}/{MAX_PASSES}. Current: {current_words} / {section['target_words']}")
@@ -214,12 +214,13 @@ class SectionCompiler:
 
     def _extract_anchors(self, context: str) -> str:
         """
-        Robustly extracts anchors.
+        Robustly extracts anchors without severe truncation.
+        Uses a much larger character budget to accommodate modern LLM token windows.
         """
         lines = context.splitlines()
         anchors = []
         total_len = 0
-        MAX_LEN = 3000
+        MAX_LEN = 65000 # ~15,000 tokens
         
         for line in lines:
             line = line.strip()
@@ -228,6 +229,7 @@ class SectionCompiler:
                 total_len += len(line)
             
             if total_len > MAX_LEN:
+                logger.warning(f"Context truncated at {MAX_LEN} characters to protect token limits.")
                 break
                 
         return "\n".join(anchors)

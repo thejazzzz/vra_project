@@ -110,178 +110,156 @@ class SectionPlanner:
         ))
         
         # --- Chapter 1: Introduction ---
-        # 1.1 Background, 1.2 Existing System, 1.3 Problem Statement, 1.4 Objectives, 1.5 Scope
         sections.append(ReportSection(
             section_id="chapter_1",
             title="Chapter 1: Introduction",
-            description="Background, problem statement, and objectives.",
+            description="Background, importance, motivation, and scope.",
             required_data=["query"],
-            target_words=SectionPlanner._calculate_target_words(2.0, "INTRO"),
+            target_words=SectionPlanner._calculate_target_words(1.5, "INTRO"),
             template_key="draft_skeleton",
             section_type="INTRO",
             section_index="1.0",
             chapter_index=1,
             outline=[
-                "1.1 Background",
-                "1.2 Existing System", 
-                "1.3 Problem Statement",
-                "1.4 Objectives",
-                "1.5 Scope"
+                "1.1 Background of the Research Topic",
+                "1.2 Importance of the Problem Domain", 
+                "1.3 Motivation for Analysis",
+                "1.4 Scope of the Analysis"
             ]
         ))
         
-        # --- Chapter 2: Literature Review ---
-        # Dynamic papers integration
-        lit_outline = []
-        # Try to pull papers from state
-        paper_titles = []
-        if "selected_papers" in state:
-            paper_titles = [
-                p.get("title", "Unknown Paper") 
-                for p in state["selected_papers"][:5] 
-                if isinstance(p, dict)
-            ]
-        
-        if paper_titles:
-            for i, p_title in enumerate(paper_titles, 1):
-                lit_outline.append(f"2.{i} {p_title}")
-        else:
-            lit_outline = ["2.1 AI-Powered Systems", "2.2 Related Work in LLMs", "2.3 Previous Approaches"]
-            
-        lit_outline.append(f"2.{len(lit_outline)+1} Research Gap")
-
+        # --- Chapter 2: Dataset and Source Collection ---
         sections.append(ReportSection(
             section_id="chapter_2",
-            title="Chapter 2: Literature Review",
-            description="Review of existing works and identification of gaps.",
+            title="Chapter 2: Dataset and Source Collection",
+            description="Overview of the search queries, sources, and paper filtering process.",
             required_data=["selected_papers"],
-            template_key="draft_skeleton", # Reuse/Adapt
-            target_words=SectionPlanner._calculate_target_words(4.0, "LITERATURE"),
-            section_type="LITERATURE",
+            template_key="draft_skeleton",
+            target_words=SectionPlanner._calculate_target_words(1.5, "METHODOLOGY"),
+            section_type="METHODOLOGY",
             section_index="2.0",
             chapter_index=2,
+            outline=[
+                "2.1 Queries and Search Strategy",
+                "2.2 Data Sources",
+                "2.3 Retrieval and Filtering Process",
+                "2.4 Dataset Characteristics"
+            ]
+        ))
+
+        # --- Chapter 3: Literature Overview ---
+        lit_outline = []
+        paper_titles = [p.get("title", "Unknown Paper") for p in state.get("selected_papers", [])[:5] if isinstance(p, dict)]
+        if paper_titles:
+            for i, p_title in enumerate(paper_titles, 1):
+                lit_outline.append(f"3.{i} {p_title}")
+        else:
+            lit_outline = ["3.1 Summary of Relevant Papers", "3.2 Key Contributions", "3.3 Thematic Categorization"]
+
+        sections.append(ReportSection(
+            section_id="chapter_3",
+            title="Chapter 3: Literature Overview",
+            description="Summary of the most relevant papers and their key contributions.",
+            required_data=["selected_papers", "paper_summaries"],
+            template_key="draft_skeleton",
+            target_words=SectionPlanner._calculate_target_words(3.0, "LITERATURE"),
+            section_type="LITERATURE",
+            section_index="3.0",
+            chapter_index=3,
             outline=lit_outline
         ))
 
-        # --- Chapter 3: System Analysis ---
-        sections.append(ReportSection(
-            section_id="chapter_3",
-            title="Chapter 3: System Analysis",
-            description="Feasibility and requirements analysis.",
-            required_data=[],
-            template_key="draft_skeleton", # Reuse analysis logic
-            target_words=SectionPlanner._calculate_target_words(3.0, "ANALYSIS"),
-            section_type="ANALYSIS",
-            section_index="3.0",
-            chapter_index=3,
-            outline=[
-                "3.1 Expected System Requirements",
-                "3.2 Feasibility Analysis",
-                "3.2.1 Technical Feasibility",
-                "3.2.2 Operational Feasibility",
-                "3.3 Economic Feasibility",
-                "3.4 Software Requirements",
-                "3.5 Hardware Requirements",
-                "3.6 Software Cost Estimation",
-                "3.7 Project Scheduling (Gantt)"
-            ]
-        ))
-
-        # --- Chapter 4: Methodology ---
+        # --- Chapter 4: Knowledge Graph Analysis ---
         sections.append(ReportSection(
             section_id="chapter_4",
-            title="Chapter 4: Methodology",
-            description="Algorithms and modular decomposition.",
-            required_data=[],
+            title="Chapter 4: Knowledge Graph Analysis",
+            description="Insights from citation networks, connectivity, and author collaborations.",
+            required_data=["citation_metrics"],
             template_key="draft_skeleton",
-            target_words=SectionPlanner._calculate_target_words(4.0, "METHODOLOGY"),
-            section_type="METHODOLOGY",
+            target_words=SectionPlanner._calculate_target_words(2.0, "ANALYSIS"),
+            section_type="ANALYSIS",
             section_index="4.0",
             chapter_index=4,
             outline=[
-                "4.1 Proposed System",
-                "4.2 Modular Decomposition",
-                "4.3 Algorithm",
-                "4.3.1 Overall System Algorithm",
-                "4.3.2 Agent Algorithms",
-                "4.4 Advantages of Proposed System"
+                "4.1 Knowledge Graph Construction",
+                "4.2 Citation Network Insights",
+                "4.3 Author Collaboration Patterns",
+                "4.4 Influential Nodes and Clusters"
             ]
         ))
 
-        # --- Chapter 5: System Design ---
+        # --- Chapter 5: Trend Analysis ---
         sections.append(ReportSection(
             section_id="chapter_5",
-            title="Chapter 5: System Design",
-            description="UML diagrams and architectural design.",
-            required_data=[],
+            title="Chapter 5: Trend Analysis",
+            description="Emerging research trends, popular methodologies, and evolution of the topic.",
+            required_data=["concept_trends"],
             template_key="draft_skeleton",
-            target_words=SectionPlanner._calculate_target_words(3.0, "DESIGN"),
-            section_type="DESIGN",
+            target_words=SectionPlanner._calculate_target_words(2.0, "ANALYSIS"),
+            section_type="ANALYSIS",
             section_index="5.0",
             chapter_index=5,
             outline=[
-                "5.1 Flow Chart",
-                "5.2 Use Case Diagram",
-                "5.3 Activity Diagram",
-                "5.4 Sequence Diagram",
-                "5.5 Collaboration Diagram",
-                "5.6 Architecture Diagram"
+                "5.1 Emerging Research Trends",
+                "5.2 Popular Methodologies",
+                "5.3 Technical Evolution Over Time",
+                "5.4 Frequently Studied Subtopics"
             ]
         ))
 
-        # --- Chapter 6: System Implementation ---
+        # --- Chapter 6: Research Gaps ---
         sections.append(ReportSection(
             section_id="chapter_6",
-            title="Chapter 6: System Implementation",
-            description="Details of the development process.",
-            required_data=[],
+            title="Chapter 6: Research Gaps",
+            description="Underexplored areas, limitations, and opportunities for improvement.",
+            required_data=["research_gaps"],
             template_key="draft_skeleton",
-            target_words=SectionPlanner._calculate_target_words(5.0, "IMPLEMENTATION"),
-            section_type="IMPLEMENTATION",
+            target_words=SectionPlanner._calculate_target_words(2.0, "ANALYSIS"),
+            section_type="ANALYSIS",
             section_index="6.0",
             chapter_index=6,
             outline=[
-                "6.1 Development Environment Setup",
-                "6.2 Frontend Development",
-                "6.3 Backend Development",
-                "6.4 AI Agent Implementation",
-                "6.5 Implemented System Flow"
+                "6.1 Underexplored Research Areas",
+                "6.2 Limitations of Current Approaches",
+                "6.3 Missing Datasets or Evaluation Methods",
+                "6.4 Opportunities for Improvement"
             ]
         ))
 
-        # --- Chapter 7: System Testing ---
+        # --- Chapter 7: Generated Research Hypotheses ---
         sections.append(ReportSection(
             section_id="chapter_7",
-            title="Chapter 7: System Testing",
-            description="Testing strategies and summary.",
-            required_data=[],
+            title="Chapter 7: Generated Research Hypotheses",
+            description="Proposed research directions and potential experimental setups based on detected gaps.",
+            required_data=["research_gaps"],
             template_key="draft_skeleton",
-            target_words=SectionPlanner._calculate_target_words(2.0, "TESTING"),
-            section_type="TESTING",
+            target_words=SectionPlanner._calculate_target_words(1.5, "ANALYSIS"),
+            section_type="ANALYSIS",
             section_index="7.0",
             chapter_index=7,
             outline=[
-                "7.1 Types of Testing (Unit, Integration, System)",
-                "7.2 Test Cases",
-                "7.3 Test Summary Report"
+                "7.1 Proposed Research Directions",
+                "7.2 Hypotheses from Existing Literature",
+                "7.3 Potential Experimental Setups"
             ]
         ))
 
-        # --- Chapter 8: Results ---
+        # --- Chapter 8: Discussion ---
         sections.append(ReportSection(
             section_id="chapter_8",
-            title="Chapter 8: Results",
-            description="Performance analysis and metrics.",
-            required_data=["concept_trends"], # Use trends as proxy for results if available
+            title="Chapter 8: Discussion",
+            description="Interpretation of insights, relationship between trends and gaps, and implications.",
+            required_data=["concept_trends", "research_gaps", "citation_metrics"],
+            depends_on=["chapter_4", "chapter_5", "chapter_6", "chapter_7"],
             template_key="draft_skeleton",
-            target_words=SectionPlanner._calculate_target_words(2.0, "RESULTS"),
+            target_words=SectionPlanner._calculate_target_words(1.5, "RESULTS"),
             section_type="RESULTS",
             section_index="8.0",
             chapter_index=8,
             outline=[
-                "8.1 Performance Analysis",
-                "8.2 Comparative Performance Table",
-                "8.3 Qualitative Results"
+                "8.1 Interpretation of Insights",
+                "8.2 Relationship Between Trends and Gaps",
+                "8.3 Implications for Future Research"
             ]
         ))
 
@@ -289,28 +267,18 @@ class SectionPlanner:
         sections.append(ReportSection(
             section_id="chapter_9",
             title="Chapter 9: Conclusion",
-            description="Summary of achievements.",
+            description="Summary of key findings and overall insights derived from the literature.",
             required_data=[],
+            depends_on=["chapter_1", "chapter_8"],
             template_key="draft_skeleton",
             target_words=SectionPlanner._calculate_target_words(1.0, "CONCLUSION"),
             section_type="CONCLUSION",
             section_index="9.0",
             chapter_index=9,
-            outline=["9.1 Conclusion"]
-        ))
-        
-        # --- Chapter 10: Future Scope ---
-        sections.append(ReportSection(
-            section_id="chapter_10",
-            title="Chapter 10: Future Scope",
-            description="Future enhancements.",
-            required_data=[],
-            template_key="draft_skeleton",
-            target_words=SectionPlanner._calculate_target_words(1.0, "CONCLUSION"),
-            section_type="CONCLUSION",
-            section_index="10.0",
-            chapter_index=10,
-            outline=["10.1 Future Scope"]
+            outline=[
+                "9.1 Summary of Key Findings",
+                "9.2 Final Remarks"
+            ]
         ))
         
         # --- Evidence Appendix ---
