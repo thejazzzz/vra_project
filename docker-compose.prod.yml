@@ -1,0 +1,67 @@
+version: "3.8"
+
+services:
+    postgres:
+        image: postgres:15
+        restart: always
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER:-vra}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vra_password_change_me}
+            POSTGRES_DB: ${POSTGRES_DB:-vra}
+        # Do not expose ports to the outside world in production if possible
+        # ports:
+        #    - "5432:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        networks:
+            - vra_net
+
+    chroma:
+        image: chromadb/chroma:latest
+        restart: always
+        # Chroma is accessed internally by the API
+        volumes:
+            - chroma_data:/chroma/
+        networks:
+            - vra_net
+
+    redis:
+        image: redis:7-alpine
+        restart: always
+        command: redis-server --requirepass ${REDIS_PASSWORD:-secure_redis_password}
+        volumes:
+            - redis_data:/data
+        networks:
+            - vra_net
+
+    api:
+        build: .
+        container_name: vra_api
+        restart: always
+        depends_on:
+            - postgres
+            - chroma
+            - redis
+        ports:
+            - "8000:8000"
+        environment:
+            APP_ENV: production
+            CHROMA_SERVER: "http://chroma:8000"
+            POSTGRES_HOST: postgres
+            POSTGRES_USER: ${POSTGRES_USER:-vra}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vra_password_change_me}
+            POSTGRES_DB: ${POSTGRES_DB:-vra}
+            REDIS_PASSWORD: ${REDIS_PASSWORD:-secure_redis_password}
+            OPENAI_API_KEY: ${OPENAI_API_KEY}
+            ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+            ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+        networks:
+            - vra_net
+
+volumes:
+    postgres_data:
+    chroma_data:
+    redis_data:
+
+networks:
+    vra_net:

@@ -37,6 +37,8 @@ def get_graphs(query: str, current_user: User = Depends(get_current_user)):
 from api.models.analysis_models import GraphEditRequest
 from services.graph_editing_service import apply_graph_edit
 from services.graph_persistence_service import save_graphs
+from services.graph_service import recompute_analytics_for_saved_graph
+import threading
 
 @router.post("/graphs/{query}/edit")
 def edit_graph(query: str, request: GraphEditRequest, current_user: User = Depends(get_current_user)):
@@ -53,7 +55,7 @@ def edit_graph(query: str, request: GraphEditRequest, current_user: User = Depen
         kg = graphs["knowledge_graph"]
         updated_kg = apply_graph_edit(kg, request.action, request.model_dump())
         
-        # Save the updated graph
+        # Save the updated graph with current analytics
         save_graphs(
             query=query, 
             user_id=user_id, 
@@ -61,6 +63,15 @@ def edit_graph(query: str, request: GraphEditRequest, current_user: User = Depen
             citation=graphs.get("citation_graph", {}), 
             analytics=graphs.get("research_analytics", {})
         )
+        
+        # Recompute analytics in the background so gaps/novelties stay current
+        def _recompute():
+            try:
+                recompute_analytics_for_saved_graph(query, user_id)
+            except Exception as exc:
+                logger.warning(f"Background analytics recompute failed: {exc}")
+        
+        threading.Thread(target=_recompute, daemon=True).start()
         
         return {"status": "success", "message": "Graph updated", "data": updated_kg}
     except HTTPException:
