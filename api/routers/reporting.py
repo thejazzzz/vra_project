@@ -189,9 +189,9 @@ async def export_report(
     if payload.format.lower() not in {"pdf", "docx", "markdown"}:
         raise HTTPException(status_code=400, detail=f"Unsupported format: {payload.format}")
 
-    # TODO: Stream response
     # Real Export Implementation
-    from fastapi.responses import Response
+    from fastapi.responses import StreamingResponse
+    import io
 
     media_types = {
         "pdf": "application/pdf",
@@ -201,12 +201,12 @@ async def export_report(
     }
 
     try:
-        content = ExportService.export_report(state, payload.format)
+        content_bytes = ExportService.export_report(state, payload.format)
         media_type = media_types.get(payload.format.lower(), "application/octet-stream")
         
-        # We return the binary content directly. 
-        # The frontend handles the filename via the 'download' attribute.
-        return Response(content=content, media_type=media_type)
+        # Stream the binary content to optimize memory usage for large reports
+        file_stream = io.BytesIO(content_bytes)
+        return StreamingResponse(file_stream, media_type=media_type)
         
     except Exception as e:
         logger.error(f"Export generation failed: {e}", exc_info=True)

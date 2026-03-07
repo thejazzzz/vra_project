@@ -1,6 +1,8 @@
 # services/formatter/normalizer.py
-from typing import Dict, Any, List
-from services.formatter.schema import FormattedReport, FormattedSection, FormattedReference
+from typing import Dict, Any, List, Tuple
+from services.formatter.schema import FormattedReport, FormattedSection, FormattedReference, FormattedTable, FormattedFigure
+import re
+import uuid
 
 class ReportNormalizer:
     @staticmethod
@@ -46,7 +48,67 @@ class ReportNormalizer:
                  url=paper.get("pdf_url")
              ))
              
+        # 4. Extract Tables and Figures from section contents
+        tables, figures = ReportNormalizer._extract_media_from_sections(normalized.sections)
+        normalized.tables = tables
+        normalized.figures = figures
+             
         return normalized
+
+    @staticmethod
+    def _extract_media_from_sections(sections: List[FormattedSection]) -> Tuple[List[FormattedTable], List[FormattedFigure]]:
+        tables = []
+        figures = []
+        t_index = 1
+        f_index = 1
+        
+        # Regex for Markdown Images: ![caption](url)
+        img_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+        # Regex for basic Markdown Tables (content between pipes over multiple lines, roughly)
+        table_pattern = re.compile(r'(?:\|.*\|\n)+')
+        
+        for sec in sections:
+            content = sec.content
+            
+            # Find Figures
+            for match in img_pattern.finditer(content):
+                caption = match.group(1) or f"Figure {f_index}"
+                path = match.group(2)
+                figures.append(FormattedFigure(
+                    id=str(uuid.uuid4()),
+                    caption=caption,
+                    path=path,
+                    index=f_index
+                ))
+                f_index += 1
+                
+            # Find Tables
+            for match in table_pattern.finditer(content):
+                table_content = match.group(0)
+                if "-" in table_content and "|" in table_content: # Basic sanity check for table header separator
+                    tables.append(FormattedTable(
+                        id=str(uuid.uuid4()),
+                        caption=f"Table {t_index}", # Markdown doesn't have standard table captions natively
+                        content=table_content.strip(),
+                        index=t_index
+                    ))
+                    t_index += 1
+                    
+            if sec.subsections:
+                sub_t, sub_f = ReportNormalizer._extract_media_from_sections(sec.subsections)
+                # Adjust indices for sub-extractions to maintain sequence
+                for t in sub_t:
+                    t.index = t_index
+                    t.caption = f"Table {t_index}"
+                    tables.append(t)
+                    t_index += 1
+                for f in sub_f:
+                    f.index = f_index
+                    f.caption = f"Figure {f_index}"
+                    figures.append(f)
+                    f_index += 1
+                    
+        return tables, figures
 
     @staticmethod
     def _process_sections(sections: List[Dict[str, Any]], level: int = 1) -> List[FormattedSection]:

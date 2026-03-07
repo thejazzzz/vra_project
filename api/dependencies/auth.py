@@ -13,8 +13,7 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
-# TODO: Retrieve these from a well-known endpoint or environment variables
-ALGORITHM = "HS256" # Or RS256 for OIDC
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256") # Configurable with fallback to HS256
 SECRET_KEY = os.getenv("NEXTAUTH_SECRET")
 EXPECTED_AUD = os.getenv("EXPECTED_AUD") # Optional: Set this in environment to enforce Audience check
 

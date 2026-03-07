@@ -3,14 +3,12 @@ from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field
 
 class FormattedTable(BaseModel):
-    # TODO: Fully implement Table support in Normalizer and Renderers
     id: str
     caption: str
     content: str 
     index: int 
 
 class FormattedFigure(BaseModel):
-    # TODO: Fully implement Figure support in Normalizer and Renderers
     id: str
     caption: str
     path: Optional[str] = None
@@ -40,6 +38,8 @@ class FormattedReport(BaseModel):
     
     sections: List[FormattedSection] = Field(default_factory=list)
     references: List[FormattedReference] = Field(default_factory=list)
+    tables: List[FormattedTable] = Field(default_factory=list)
+    figures: List[FormattedFigure] = Field(default_factory=list)
     
     # Metadata
     meta: Dict[str, Any] = Field(default_factory=dict)

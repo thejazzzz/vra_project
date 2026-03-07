@@ -262,7 +262,14 @@ def edit_graph(
             else:
                 # Non-strict: Log error but allow operation to proceed
                 logger.error(f"AUDIT FAILURE (NON-STRICT): Failed to log graph edit for user {user_id}. proceeding... Error: {audit_err}")
-                # TODO: Emit metric or alert to monitoring system here
+                
+                # Emit warning designed to be caught by Prometheus/Datadog log scrapers
+                import warnings
+                warnings.warn(
+                    f"VRA_METRIC_ALERT: Audit log bypass occurred during graph edit for user {user_id}. Monitor system health.",
+                    category=UserWarning,
+                    stacklevel=2
+                )
         
         return {"status": "success", "message": f"Applied {request.action}", "updated_graph": updated_data}
 
