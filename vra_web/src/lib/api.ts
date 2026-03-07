@@ -151,8 +151,29 @@ setupInterceptors(longRunningApi);
 
 // Auth: Fast
 export const authApi = {
-    login: (email: string) =>
-        defaultApi.post("/auth/login", { email }).then((res) => res.data),
+    login: (email: string, password: string) =>
+        defaultApi
+            .post(
+                "/auth/login",
+                { email, password },
+                {
+                    // @ts-ignore
+                    skipAuthRefresh: true,
+                },
+            )
+            .then((res) => res.data),
+
+    register: (email: string, password: string) =>
+        defaultApi
+            .post(
+                "/auth/register",
+                { email, password },
+                {
+                    // @ts-ignore
+                    skipAuthRefresh: true,
+                },
+            )
+            .then((res) => res.data),
 
     me: () => defaultApi.get<UserResponse>("/auth/me").then((res) => res.data),
 
@@ -162,6 +183,21 @@ export const authApi = {
                 localStorage.removeItem("vra_auth_token");
             }
         }),
+
+    verifyEmail: (token: string) =>
+        defaultApi
+            .post("/auth/verify-email", { token })
+            .then((res) => res.data),
+
+    requestPasswordReset: (email: string) =>
+        defaultApi
+            .post("/auth/password-reset/request", { email })
+            .then((res) => res.data),
+
+    resetPassword: (token: string, new_password: string) =>
+        defaultApi
+            .post("/auth/password-reset/confirm", { token, new_password })
+            .then((res) => res.data),
 };
 
 // Planner: Mixed
@@ -255,6 +291,12 @@ export const graphApi = {
             .post(`/graphs/${encodeURIComponent(query)}/approve`, {
                 user_id: userId,
             })
+            .then((res) => res.data),
+
+    // Graph Editing
+    editGraph: async (query: string, payload: any) =>
+        defaultApi
+            .post(`/graphs/${encodeURIComponent(query)}/edit`, payload)
             .then((res) => res.data),
 };
 

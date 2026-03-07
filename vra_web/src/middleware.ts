@@ -5,14 +5,22 @@ export function middleware(request: NextRequest) {
     const path = request.nextUrl.pathname;
 
     // Public paths that don't require authentication
+    const publicPaths = [
+        "/",
+        "/login",
+        "/register",
+        "/verify-email",
+        "/password-reset/request",
+        "/password-reset/confirm",
+        "/terms",
+        "/privacy",
+        "/favicon.ico",
+    ];
+
     if (
-        path === "/" ||
-        path === "/login" ||
-        path === "/terms" ||
-        path === "/privacy" ||
+        publicPaths.some((p) => path === p || path.startsWith(p)) ||
         path.startsWith("/_next") ||
-        path === "/favicon.ico" ||
-        path.startsWith("/api/") // If we decide to proxy, or if these are Next.js API routes (unlikely for now)
+        path.startsWith("/api/")
     ) {
         return NextResponse.next();
     }

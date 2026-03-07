@@ -29,6 +29,9 @@ from api.routers import (
     upload, 
 )
 from api.middleware.rate_limit import RateLimitMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from utils.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,8 @@ app = FastAPI(
     description="Backend API for the Virtual Research Assistant (VRA).",
     lifespan=lifespan
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Configuration
 if env == "local":
@@ -81,8 +86,8 @@ else:
 # Add Rate Limiting (Global)
 # Local dev needs higher limits for polling/hot-reload
 limit_count = 1200 if env == "local" else 100
-limiter = RateLimitMiddleware(requests_per_minute=limit_count)
-app.middleware("http")(limiter)
+rate_limit_middleware = RateLimitMiddleware(requests_per_minute=limit_count)
+app.middleware("http")(rate_limit_middleware)
 
 from fastapi import Request
 from fastapi.responses import JSONResponse

@@ -15,46 +15,49 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Loader2 } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-export default function LoginPage() {
+export default function RegisterPage() {
     const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isSuccess, setIsSuccess] = useState(false);
 
-    const handleLogin = async (e: React.FormEvent) => {
+    const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
         setError(null);
 
+        // Basic validation
         if (!email || !email.includes("@")) {
             setError("Please enter a valid email address.");
             setIsLoading(false);
             return;
         }
 
-        if (!password || password.length < 8) {
+        if (password.length < 8) {
             setError("Password must be at least 8 characters.");
             setIsLoading(false);
             return;
         }
 
+        if (password !== confirmPassword) {
+            setError("Passwords do not match.");
+            setIsLoading(false);
+            return;
+        }
+
         try {
-            const response = await authApi.login(email, password);
-            if (response.access_token) {
-                // Manual Cookie Stamping to fix Localhost Middleware visibility issues
-                document.cookie = `vra_auth_token=${response.access_token}; path=/; max-age=3600; samesite=Lax`;
-                // Redundancy: Store in LocalStorage for API Client Interceptor
-                localStorage.setItem("vra_auth_token", response.access_token);
-            }
-            router.push("/dashboard"); // Redirect to dashboard
+            await authApi.register(email, password);
+            setIsSuccess(true);
         } catch (err: any) {
-            console.error("Login failed", err);
+            console.error("Registration failed", err);
             const detail = err.response?.data?.detail;
-            let message = "Login failed. Please try again.";
+            let message = "Registration failed. Please try again.";
 
             if (detail) {
                 if (typeof detail === "string") {
@@ -73,25 +76,56 @@ export default function LoginPage() {
         }
     };
 
+    if (isSuccess) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-background p-4">
+                <Card className="w-full max-w-md">
+                    <CardHeader>
+                        <div className="flex justify-center mb-4">
+                            <CheckCircle2 className="h-12 w-12 text-primary" />
+                        </div>
+                        <CardTitle className="text-2xl font-bold text-center">
+                            Registration Successful
+                        </CardTitle>
+                        <CardDescription className="text-center">
+                            We've sent a verification link to{" "}
+                            <strong>{email}</strong>. Please check your inbox to
+                            activate your account.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardFooter className="flex flex-col gap-4">
+                        <Link href="/login" className="w-full">
+                            <Button className="w-full">
+                                Return to Sign In
+                            </Button>
+                        </Link>
+                    </CardFooter>
+                </Card>
+            </div>
+        );
+    }
+
     return (
-        <div className="flex min-h-screen items-center justify-center bg-background p-4">
-            <Card className="w-full max-w-sm">
+        <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+            <Card className="w-full max-w-md">
                 <CardHeader className="space-y-1">
                     <CardTitle className="text-2xl font-bold">
-                        Sign In
+                        Create an Account
                     </CardTitle>
                     <CardDescription>
-                        Enter your credentials to access the VRA platform.
+                        Enter your email and a strong password to get started.
                     </CardDescription>
                 </CardHeader>
-                <form onSubmit={handleLogin}>
+                <form onSubmit={handleRegister}>
                     <CardContent className="space-y-4">
                         {error && (
                             <Alert variant="destructive">
                                 <AlertCircle className="h-4 w-4" />
+                                <AlertTitle>Registration Error</AlertTitle>
                                 <AlertDescription>{error}</AlertDescription>
                             </Alert>
                         )}
+
                         <div className="space-y-2">
                             <Label htmlFor="email">Email</Label>
                             <Input
@@ -104,22 +138,36 @@ export default function LoginPage() {
                                 required
                             />
                         </div>
+
                         <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <Label htmlFor="password">Password</Label>
-                                <Link
-                                    href="/password-reset/request"
-                                    className="text-xs text-primary hover:underline underline-offset-4"
-                                >
-                                    Forgot password?
-                                </Link>
-                            </div>
+                            <Label htmlFor="password">Password</Label>
                             <Input
                                 id="password"
                                 type="password"
                                 placeholder="••••••••"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                disabled={isLoading}
+                                minLength={8}
+                                required
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Must be at least 8 characters.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="confirm-password">
+                                Confirm Password
+                            </Label>
+                            <Input
+                                id="confirm-password"
+                                type="password"
+                                placeholder="••••••••"
+                                value={confirmPassword}
+                                onChange={(e) =>
+                                    setConfirmPassword(e.target.value)
+                                }
                                 disabled={isLoading}
                                 minLength={8}
                                 required
@@ -135,19 +183,19 @@ export default function LoginPage() {
                             {isLoading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Signing In...
+                                    Creating Account...
                                 </>
                             ) : (
-                                "Sign In"
+                                "Sign Up"
                             )}
                         </Button>
                         <div className="text-center text-sm text-muted-foreground">
-                            Don&apos;t have an account?{" "}
+                            Already have an account?{" "}
                             <Link
-                                href="/register"
+                                href="/login"
                                 className="text-primary hover:underline underline-offset-4"
                             >
-                                Sign Up
+                                Sign In
                             </Link>
                         </div>
                     </CardFooter>

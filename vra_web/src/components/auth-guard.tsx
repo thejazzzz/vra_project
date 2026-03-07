@@ -19,7 +19,20 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
         const checkAuth = async () => {
             // Public routes that don't need auth
-            if (pathname === "/login" || pathname === "/") {
+            const publicRoutes = [
+                "/login",
+                "/",
+                "/register",
+                "/verify-email",
+                "/password-reset/request",
+                "/password-reset/confirm",
+            ];
+            if (
+                publicRoutes.some(
+                    (route) =>
+                        pathname === route || pathname?.startsWith(route),
+                )
+            ) {
                 if (isMounted) {
                     setShouldRender(true);
                     setIsLoading(false);

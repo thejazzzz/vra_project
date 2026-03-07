@@ -6,6 +6,7 @@ from uuid import uuid4
 from dotenv import load_dotenv
 
 os.environ["APP_ENV"] = "test"
+os.environ["ALLOW_TEMP_ENCRYPTION"] = "true"
 load_dotenv(".env.local")
 
 from database.db import init_db
@@ -93,9 +94,13 @@ async def run_real_benchmarks():
     save_state_for_query(session_id, state, user_id)
     
     if state["report_state"].get("sections"):
-        first_section_id = state["report_state"]["sections"][0]["section_id"]
+        # Index 0 is Abstract, which has strict dependencies and fails fast.
+        # Index 1 is Chapter 1: Introduction, which can be generated immediately.
+        target_section = state["report_state"]["sections"][1] 
+        target_id = target_section["section_id"]
+        print(f"Benchmarking generation for: {target_section['title']}...")
         try:
-            InteractiveReportingService.generate_section(session_id, user_id, first_section_id)
+            InteractiveReportingService.generate_section(session_id, user_id, target_id)
         except Exception as e:
             print(f"Section generation error: {e}")
     else:

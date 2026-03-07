@@ -3,6 +3,23 @@ from sqlalchemy.orm import relationship
 from database.db import Base
 from datetime import datetime
 import enum
+from sqlalchemy.types import TypeDecorator
+from utils.security import encrypt_string, decrypt_string
+
+class EncryptedString(TypeDecorator):
+    """Encrypts Strings going into the DB and decrypts them coming out."""
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return encrypt_string(value)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return decrypt_string(value)
+        return value
 
 class UserRole(str, enum.Enum):
     STUDENT = "STUDENT"
@@ -20,8 +37,13 @@ class User(Base):
 
     id = Column(String, primary_key=True, index=True) # UUID or Auth0 ID
     email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=True) # Nullable for OAuth users
     role = Column(Enum(UserRole), default=UserRole.STUDENT, nullable=False)
+    email_verified = Column(Boolean, default=False)
+    mfa_enabled = Column(Boolean, default=False)
+    mfa_secret = Column(EncryptedString, nullable=True) # Encrypted transparently
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships 
     sessions = relationship("ResearchSession", back_populates="owner")
@@ -66,3 +88,22 @@ class RefreshToken(Base):
 
     # Relationships
     user = relationship("User", back_populates="refresh_tokens")
+
+class VerificationTokenType(str, enum.Enum):
+    EMAIL_VERIFY = "EMAIL_VERIFY"
+    PASSWORD_RESET = "PASSWORD_RESET"
+    MAGIC_LINK = "MAGIC_LINK"
+
+class VerificationToken(Base):
+    __tablename__ = "verification_tokens"
+
+    id = Column(String, primary_key=True, index=True) # UUID
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String, nullable=False, unique=True)
+    type = Column(Enum(VerificationTokenType), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    used_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User")

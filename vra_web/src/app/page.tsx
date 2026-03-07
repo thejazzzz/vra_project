@@ -31,6 +31,12 @@ export default function LandingPage() {
                     >
                         Sign In
                     </Link>
+                    <Link
+                        className="text-sm font-medium hover:underline underline-offset-4"
+                        href="/register"
+                    >
+                        Sign Up
+                    </Link>
                 </nav>
             </header>
             <main className="flex-1">
@@ -46,11 +52,20 @@ export default function LandingPage() {
                                 interactive knowledge graphs.
                             </p>
                         </div>
-                        <div className="space-x-4">
-                            <Link href="/login">
+                        <div className="flex flex-col sm:flex-row justify-center gap-4">
+                            <Link href="/register">
                                 <Button size="lg" className="h-12 px-8">
-                                    Start a New Research Session
+                                    Sign Up Now
                                     <ArrowRight className="ml-2 h-4 w-4" />
+                                </Button>
+                            </Link>
+                            <Link href="/login">
+                                <Button
+                                    size="lg"
+                                    variant="outline"
+                                    className="h-12 px-8"
+                                >
+                                    Sign In
                                 </Button>
                             </Link>
                         </div>

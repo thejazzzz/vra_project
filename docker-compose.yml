@@ -1,58 +1,71 @@
 version: "3.8"
 
 services:
-  postgres:
-    image: postgres:15
-    restart: always
-    environment:
-      POSTGRES_USER: vra
-      POSTGRES_PASSWORD: vra
-      POSTGRES_DB: vra
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - vra_net
+    postgres:
+        image: postgres:15
+        restart: always
+        environment:
+            POSTGRES_USER: vra
+            POSTGRES_PASSWORD: vra
+            POSTGRES_DB: vra
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        networks:
+            - vra_net
 
-  chroma:
-    image: chromadb/chroma:latest
-    restart: always
-    ports:
-      - "8000:8000"
-    volumes:
-      - chroma_data:/chroma/
-    networks:
-      - vra_net
+    chroma:
+        image: chromadb/chroma:latest
+        restart: always
+        ports:
+            - "8000:8000"
+        volumes:
+            - chroma_data:/chroma/
+        networks:
+            - vra_net
 
-  api:
-    build: .
-    container_name: vra_api
-    restart: always
-    depends_on:
-      - postgres
-      - chroma
-    ports:
-      - "8001:8000"
-    environment:
-      # API environment
-      APP_ENV: production
+    redis:
+        image: redis:7-alpine
+        restart: always
+        command: redis-server --requirepass ${REDIS_PASSWORD:-secure_redis_password}
+        ports:
+            - "127.0.0.1:6379:6379"
+        volumes:
+            - redis_data:/data
+        networks:
+            - vra_net
 
-      # Chroma HTTP mode (used by Version A client)
-      CHROMA_SERVER: "http://chroma:8000"
+    api:
+        build: .
+        container_name: vra_api
+        restart: always
+        depends_on:
+            - postgres
+            - chroma
+            - redis
+        ports:
+            - "8001:8000"
+        environment:
+            # API environment
+            APP_ENV: production
 
-      # Postgres env (you will use later)
-      POSTGRES_HOST: postgres
-      POSTGRES_USER: vra
-      POSTGRES_PASSWORD: vra
-      POSTGRES_DB: vra
+            # Chroma HTTP mode (used by Version A client)
+            CHROMA_SERVER: "http://chroma:8000"
 
-    networks:
-      - vra_net
+            # Postgres env (you will use later)
+            POSTGRES_HOST: postgres
+            POSTGRES_USER: vra
+            POSTGRES_PASSWORD: vra
+            POSTGRES_DB: vra
+
+        networks:
+            - vra_net
 
 volumes:
-  postgres_data:
-  chroma_data:
+    postgres_data:
+    chroma_data:
+    redis_data:
 
 networks:
-  vra_net:
+    vra_net:

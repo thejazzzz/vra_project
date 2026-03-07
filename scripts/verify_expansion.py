@@ -6,9 +6,16 @@ import time
 import uuid
 import threading
 import sys
+import os
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from dotenv import load_dotenv
+load_dotenv(".env.local")
+from database.db import engine
+from sqlalchemy import text
 
 BASE_URL = "http://localhost:7000"
-TEST_EMAIL = "verifier@example.com"
+TEST_EMAIL = "verifier_expansion@example.com"
 
 # A query likely to have 0 results on Arxiv/S2 initially, forcing expansion
 # "sdlfkjsdlfkjsdflkjsdflkjsdf" (Nonsense)
@@ -17,7 +24,32 @@ RARE_QUERY = "sdlfkjsdlfkjsdflkjsdflkjsdf"
 def get_auth_token():
     print(f"Logging in as {TEST_EMAIL}...")
     try:
-        data = json.dumps({"email": TEST_EMAIL}).encode('utf-8')
+        # Register first
+        reg_data = json.dumps({"email": TEST_EMAIL, "password": "securepassword"}).encode('utf-8')
+        reg_req = urllib.request.Request(f"{BASE_URL}/auth/register", method="POST", data=reg_data)
+        reg_req.add_header('Content-Type', 'application/json')
+        try:
+            urllib.request.urlopen(reg_req, timeout=10)
+            print(f"Registered new user: {TEST_EMAIL}")
+        except urllib.error.HTTPError as e:
+            if e.code == 400:
+                # Check if it's actually "already registered" vs other validation error
+                try:
+                    error_body = json.load(e)
+                    # Adjust based on your API's actual error response structure
+                    if "already" not in str(error_body).lower() and "exists" not in str(error_body).lower():
+                        print(f"Registration failed (not 'already exists'): {error_body}")
+                except:
+                    pass  # If we can't parse, proceed anyway
+            else:
+                raise
+
+        # Verify email manually
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE users SET email_verified = TRUE WHERE email = :email"), {"email": TEST_EMAIL})
+
+        # Then login
+        data = json.dumps({"email": TEST_EMAIL, "password": "securepassword"}).encode('utf-8')
         req = urllib.request.Request(f"{BASE_URL}/auth/login", method="POST", data=data)
         req.add_header('Content-Type', 'application/json')
         

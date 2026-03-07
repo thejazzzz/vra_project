@@ -1,17 +1,42 @@
 import requests
 import time
+from database.db import engine
+from sqlalchemy import text
 
 BASE_URL = "http://localhost:7000"
-EMAIL = "verifier_v2@example.com"
+EMAIL = "verifier_v3@example.com"
 
 def test_auth_flow_cookies():
     print(f"🧪 Testing Cookie-Based Auth Flow for {EMAIL}...")
     
     session = requests.Session()
     
+    # 0. Register
+    print("\n[0] Attempting Registration...")
+    register_payload = {"email": EMAIL, "password": "securepassword"}
+    try:
+        reg_res = session.post(f"{BASE_URL}/auth/register", json=register_payload, timeout=30)
+        if reg_res.status_code not in (200, 400):
+            reg_res.raise_for_status()
+        print(f"✅ Registration endpoint hit successfully (Status: {reg_res.status_code})")
+    except Exception as e:
+        print(f"❌ Registration Failed: {e}")
+        if 'reg_res' in locals(): print(reg_res.text)
+        return
+
+    # 0.5 Manually Verify Email in DB
+    print("\n[0.5] Manually verifying email in DB for testing...")
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE users SET email_verified = TRUE WHERE email = :email"), {"email": EMAIL})
+        print("✅ Email verified in DB.")
+    except Exception as e:
+        print(f"❌ Database Verification Update Failed: {e}")
+        return
+
     # 1. Login
     print("\n[1] Attempting Login...")
-    login_payload = {"email": EMAIL}
+    login_payload = {"email": EMAIL, "password": "securepassword"}
     try:
         login_res = session.post(f"{BASE_URL}/auth/login", json=login_payload, timeout=30)
         login_res.raise_for_status()
