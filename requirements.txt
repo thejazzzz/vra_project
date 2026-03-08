@@ -31,3 +31,4 @@ email-validator
 cachetools
 cryptography
 anyio
+argon2-cffi
