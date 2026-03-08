@@ -20,7 +20,7 @@ class ApprovalRequest(BaseModel):
     run_id: Optional[str] = None # To verify we are approving the correct version? 
     # For now, just query/user_id is unique enough if we approve LATEST.
 
-@router.post("/graphs/{query}/approve")
+@router.post("/{query}/approve")
 async def approve_graph(
     query: str, 
     request: ApprovalRequest,

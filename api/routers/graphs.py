@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 
-@router.get("/graphs/{query}")
+@router.get("/{query}")
 def get_graphs(query: str, current_user: User = Depends(get_current_user)):
 
     if not query or not query.strip():
@@ -40,7 +40,7 @@ from services.graph_persistence_service import save_graphs
 from services.graph_service import recompute_analytics_for_saved_graph
 import threading
 
-@router.post("/graphs/{query}/edit")
+@router.post("/{query}/edit")
 def edit_graph(query: str, request: GraphEditRequest, current_user: User = Depends(get_current_user)):
     if not query or not query.strip():
         raise HTTPException(status_code=400, detail="Invalid query")

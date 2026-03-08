@@ -269,7 +269,7 @@ export const researchApi = {
 // Graph: Fast reads
 export const graphApi = {
     getData: async (query: string) =>
-        defaultApi.get(`/graphs/graphs/${encodeURIComponent(query)}`),
+        defaultApi.get(`/graphs/${encodeURIComponent(query)}`),
     getAuthors: async (query: string) =>
         defaultApi.get(`/graphs/authors/${encodeURIComponent(query)}`),
     getTrends: async (query: string) =>

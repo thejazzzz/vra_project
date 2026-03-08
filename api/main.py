@@ -112,14 +112,7 @@ app.include_router(research.router, prefix="/research", tags=["Research Agent"])
 app.include_router(analysis.router, prefix="/analysis", tags=["Analysis Agent"])
 app.include_router(reporting.router, prefix="/reporting", tags=["Reporting Agent"])
 app.include_router(graphs.router, prefix="/graphs", tags=["Graphs"])
-# IMPORTANT: Approval endpoints live at root /graphs/ or similar, check router prefix
-# The graph_approval.router defines @router.post("/graphs/{query}/approve")
-# If we prefix with /graphs, it becomes /graphs/graphs/{query}/approve
-# But the user error is /graphs/{id}/approve
-# So we should probably NOT prefix it if the router defines the full path OR check the definition.
-# Checking definition: @router.post("/graphs/{query}/approve")
-# So we include it WITHOUT prefix or empty prefix.
-app.include_router(graph_approval.router, tags=["Graph Approval"]) 
+app.include_router(graph_approval.router, prefix="/graphs", tags=["Graph Approval"])
 app.include_router(graph_viewer.router, prefix="/graph-viewer", tags=["Graph Viewer"])
 app.include_router(auth.router, tags=["Authentication"]) 
 app.include_router(upload.router, prefix="/upload", tags=["Upload"])
