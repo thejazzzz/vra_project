@@ -28,3 +28,6 @@ google-auth
 pyotp
 qrcode[pil]
 email-validator
+cachetools
+cryptography
+anyio
