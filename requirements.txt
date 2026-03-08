@@ -24,3 +24,7 @@ passlib[bcrypt]
 redis
 slowapi
 python-multipart
+google-auth
+pyotp
+qrcode[pil]
+email-validator
