@@ -21,4 +21,6 @@ jinja2
 fpdf2
 python-louvain
 passlib[bcrypt]
-python-jose[cryptography]
+redis
+slowapi
+python-multipart
