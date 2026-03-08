@@ -43,7 +43,11 @@ class GapAnalysisAgent:
         entropy_dict = metrics.get("entropy", {})
 
         try:
-            KG = nx.node_link_graph(kg_data)
+            # Normalise: NetworkX >= 3.4 stores edges under "edges"; older uses "links".
+            _kg_data = kg_data
+            if "edges" in _kg_data and "links" not in _kg_data:
+                _kg_data = {**_kg_data, "links": _kg_data["edges"]}
+            KG = nx.node_link_graph(_kg_data, edges="links")
         except Exception as e:
             logger.error(f"Failed to parse graphs for gap analysis: {e}")
             state["research_gaps"] = []

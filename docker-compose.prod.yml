@@ -6,7 +6,7 @@ services:
         restart: always
         environment:
             POSTGRES_USER: ${POSTGRES_USER:-vra}
-            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vra_password_change_me}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vra}
             POSTGRES_DB: ${POSTGRES_DB:-vra}
         # Do not expose ports to the outside world in production if possible
         # ports:
@@ -46,18 +46,52 @@ services:
             - "8000:8000"
         environment:
             APP_ENV: production
-            CHROMA_SERVER: "http://chroma:8000"
+
+            # Vector DB
+            CHROMA_SERVER: http://chroma:8000
+
+            # Database
             POSTGRES_HOST: postgres
             POSTGRES_USER: ${POSTGRES_USER:-vra}
-            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vra_password_change_me}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vra}
             POSTGRES_DB: ${POSTGRES_DB:-vra}
+
+            # Redis
             REDIS_PASSWORD: ${REDIS_PASSWORD:-secure_redis_password}
+            REDIS_URL: ${REDIS_URL:-redis://:secure_redis_password@redis:6379/0}
+
+            # AI Providers
             OPENAI_API_KEY: ${OPENAI_API_KEY}
-            ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+            OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+            OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+            OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-exp:free}
+
+            # LLM Routing
+            VRA_HYBRID_MODE: ${VRA_HYBRID_MODE:-true}
+            PRIMARY_PROVIDER: ${PRIMARY_PROVIDER:-openai}
+            SECONDARY_PROVIDER: ${SECONDARY_PROVIDER:-openrouter}
+            MAX_CLOUD_CALLS: ${MAX_CLOUD_CALLS:-20}
+            REPORT_PROVIDER: ${REPORT_PROVIDER:-openai}
+
+            # Research
+            SEMANTIC_SCHOLAR_API_KEY: ${SEMANTIC_SCHOLAR_API_KEY}
+
+            # Email
+            SMTP_HOST: ${SMTP_HOST}
+            SMTP_PORT: ${SMTP_PORT:-587}
+            SMTP_USER: ${SMTP_USER}
+            SMTP_PASSWORD: ${SMTP_PASSWORD}
+            EMAIL_FROM: ${EMAIL_FROM}
+
+            # Auth
+            NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+
+            # Frontend / CORS
+            FRONTEND_URL: ${FRONTEND_URL}
             ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+
         networks:
             - vra_net
-
 volumes:
     postgres_data:
     chroma_data:

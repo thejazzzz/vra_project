@@ -1,14 +1,36 @@
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Virtual environments
 venv/
-.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.example
+
+# Git
 .git
 .gitignore
-.env
-chroma/
-postgres_data/
+
+# Test & dev artifacts
+.pytest_cache/
+tests/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+
+# Frontend (deployed separately on Vercel)
+vra_web/
 node_modules/
-.env.example
+
+# Local data storage
+chroma/
 chroma_storage/
+postgres_data/

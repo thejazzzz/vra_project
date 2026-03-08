@@ -8,6 +8,20 @@ import {
     AddPaperPayload,
 } from "../types"; // Switched to relative import
 
+/**
+ * NetworkX 3.4+ changed node_link_data() to emit "edges" instead of "links".
+ * This helper normalises both old and new formats so the frontend always
+ * receives the expected { nodes, links } shape.
+ */
+function normalizeGraph(graph: any): { nodes: any[]; links: any[] } {
+    if (!graph) return { nodes: [], links: [] };
+    return {
+        nodes: graph.nodes || [],
+        // Accept both "links" (NetworkX <3.4) and "edges" (NetworkX >=3.4)
+        links: graph.links ?? graph.edges ?? [],
+    };
+}
+
 export const useResearchStore = create<ResearchState>((set, get) => {
     // Helper to centralize submission logic with error handling and state management
     const handleSubmission = async (
@@ -84,18 +98,12 @@ export const useResearchStore = create<ResearchState>((set, get) => {
                             : { nodes: [], links: [] },
                     knowledgeGraph:
                         state.knowledge_graph && state.knowledge_graph.nodes
-                            ? state.knowledge_graph
-                            : {
-                                  nodes: [],
-                                  links: [],
-                              },
+                            ? normalizeGraph(state.knowledge_graph)
+                            : { nodes: [], links: [] },
                     citationGraph:
                         state.citation_graph && state.citation_graph.nodes
-                            ? state.citation_graph
-                            : {
-                                  nodes: [],
-                                  links: [],
-                              },
+                            ? normalizeGraph(state.citation_graph)
+                            : { nodes: [], links: [] },
                     draftReport: state.draft_report || "",
                     isLoading: false,
                 });

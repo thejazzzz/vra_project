@@ -14,8 +14,13 @@ class GraphAnalyticsService:
     """
     
     def __init__(self, graph_data: Dict):
-        # Reconstruct graph from JSON
-        self.G = nx.node_link_graph(graph_data)
+        # Reconstruct graph from JSON.
+        # NetworkX >= 3.4 emits "edges" from node_link_data; older versions emit "links".
+        # Normalise so we can always pass edges="links" safely.
+        _data = graph_data
+        if "edges" in _data and "links" not in _data:
+            _data = {**_data, "links": _data["edges"]}
+        self.G = nx.node_link_graph(_data, edges="links")
         
     def analyze(self) -> Dict[str, Any]:
         """Run full suite of research analytics."""
