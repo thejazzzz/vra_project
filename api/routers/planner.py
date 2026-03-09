@@ -72,7 +72,7 @@ class SessionSchema(BaseModel):
 
 @router.post("/plan")
 async def plan_task(payload: ResearchRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    query = (payload.query or "").strip()
+    query = (payload.query or "").strip().lower()
     if not query:
         raise HTTPException(status_code=400, detail="Query required")
 

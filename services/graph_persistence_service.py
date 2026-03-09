@@ -7,10 +7,11 @@ from typing import Optional, Dict
 
 def save_graphs(query: str, user_id: str, knowledge: dict, citation: dict, analytics: Optional[dict] = None):
     """Insert or update the graphs for a user + query."""
+    clean_query = query.strip().lower()
     with SessionLocal() as db:
         try:
             stmt = insert(Graph).values(
-                query=query,
+                query=clean_query,
                 user_id=user_id,
                 knowledge_graph=knowledge,
                 citation_graph=citation,
@@ -33,9 +34,10 @@ def save_graphs(query: str, user_id: str, knowledge: dict, citation: dict, analy
 
 
 def load_graphs(query: str, user_id: str) -> Optional[Dict]:
+    clean_query = query.strip().lower()
     with SessionLocal() as db:
         row = db.query(Graph).filter(
-            Graph.query == query,
+            Graph.query == clean_query,
             Graph.user_id == user_id
         ).first()
 

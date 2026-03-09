@@ -35,7 +35,9 @@ def view_graph(query: str, current_user: User = Depends(get_current_user)):
     user_id = current_user.id
     if not query or not query.strip():
         raise HTTPException(status_code=400, detail="Invalid query parameter")
-    graphs = load_graphs(query, user_id)
+    
+    clean_query = query.strip().lower()
+    graphs = load_graphs(clean_query, user_id)
     if not graphs:
         raise HTTPException(status_code=404, detail="Graphs not found")
 
@@ -195,8 +197,9 @@ def get_graph_data(query: str, current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Invalid query parameter")
 
     user_id = current_user.id
+    clean_query = query.strip().lower()
 
-    graphs = load_graphs(query, user_id)
+    graphs = load_graphs(clean_query, user_id)
     if not graphs:
         raise HTTPException(status_code=404, detail="Graphs not found")
 
@@ -220,7 +223,8 @@ def edit_graph(
     Apply an edit to the graph and save it.
     """
     user_id = current_user.id
-    graphs = load_graphs(query, user_id)
+    clean_query = query.strip().lower()
+    graphs = load_graphs(clean_query, user_id)
     if not graphs:
         raise HTTPException(status_code=404, detail="Graph not found")
 

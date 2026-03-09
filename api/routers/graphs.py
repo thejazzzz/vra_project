@@ -41,13 +41,13 @@ async def approve_graph(
     """
     logger.info(f"🔍 Approval Request for ID: {query} (user: {current_user.id})")
     
-    actual_query = query
+    actual_query = query.strip().lower()
     session_record = db.query(ResearchSession).filter(ResearchSession.session_id == query).first()
     if session_record:
-        actual_query = session_record.query
+        actual_query = session_record.query.strip().lower()
         logger.info(f"✅ Translated Session UUID {query} to Query: '{actual_query}'")
     else:
-        logger.warning(f"⚠️ No session record found for ID: {query}. Using as is.")
+        logger.warning(f"⚠️ No session record found for ID: {query}. Using as is (standardized).")
 
     data = load_graphs(actual_query, current_user.id)
     if not data or not data.get("knowledge_graph"):
@@ -79,7 +79,8 @@ async def approve_graph(
         if current_state:
             current_state["graph_approved"] = True
             if current_state.get("current_step") == "awaiting_graph_review":
-                current_state["current_step"] = "awaiting_gap_analysis"
+                current_step = "awaiting_gap_analysis"
+                current_state["current_step"] = current_step
                 
             save_state_for_query(query, current_state, current_user.id)
             logger.info(f"✅ Workflow State updated: graph_approved=True & advanced to Gap Analysis for session {query}")
@@ -99,10 +100,10 @@ def edit_graph(
     db: Session = Depends(get_db)
 ):
     """Handles UUID (session_id) or Query string for editing."""
-    actual_query = query
+    actual_query = query.strip().lower()
     session_record = db.query(ResearchSession).filter(ResearchSession.session_id == query).first()
     if session_record:
-        actual_query = session_record.query
+        actual_query = session_record.query.strip().lower()
     
     user_id = current_user.id
     try:
@@ -144,10 +145,10 @@ def get_graphs(
     db: Session = Depends(get_db)
 ):
     """Handles UUID (session_id) or Query string for loading."""
-    actual_query = query
+    actual_query = query.strip().lower()
     session_record = db.query(ResearchSession).filter(ResearchSession.session_id == query).first()
     if session_record:
-        actual_query = session_record.query
+        actual_query = session_record.query.strip().lower()
     
     user_id = current_user.id
     try:
