@@ -39,16 +39,24 @@ async def approve_graph(
     """
     Research-Grade Approval Gate. Handles UUID (session_id) or Query string.
     """
+    logger.info(f"🔍 Approval Request for ID: {query} (user: {current_user.id})")
+    
     actual_query = query
     session_record = db.query(ResearchSession).filter(ResearchSession.session_id == query).first()
     if session_record:
         actual_query = session_record.query
+        logger.info(f"✅ Translated Session UUID {query} to Query: '{actual_query}'")
+    else:
+        logger.warning(f"⚠️ No session record found for ID: {query}. Using as is.")
 
     data = load_graphs(actual_query, current_user.id)
     if not data or not data.get("knowledge_graph"):
+        logger.error(f"❌ Graph data not found in DB for query: '{actual_query}' (user: {current_user.id})")
         raise HTTPException(status_code=404, detail=f"Graph not found for approval (ID: {query}).")
     
     kg = data["knowledge_graph"]
+    logger.info(f"📊 Graph data retrieved. Nodes: {len(kg.get('nodes', []))}, Edges: {len(kg.get('links', []))}")
+    
     run_meta = kg.get("graph", {}).get("meta", {})
     
     if request.run_id:
@@ -59,12 +67,14 @@ async def approve_graph(
     
     try:
         MemoryService.update_global_stats(kg, approved=True)
+        logger.info(f"🧠 Memory Stats updated for graph approval.")
     except Exception as e:
         logger.error(f"Memory Update Critical Failure: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Memory update failed.")
         
     from services.state_service import load_state_for_query, save_state_for_query
     try:
+        # NOTE: load_state_for_query uses session_id (the UUID) as the key in the workflow_states table
         current_state = load_state_for_query(query, current_user.id)
         if current_state:
             current_state["graph_approved"] = True
