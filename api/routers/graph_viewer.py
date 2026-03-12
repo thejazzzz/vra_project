@@ -242,10 +242,11 @@ def edit_graph(
         
         # Save back to DB
         save_graphs(
-            query=query,
+            query=graphs.get("query", clean_query),
             user_id=user_id,
             knowledge=graphs["knowledge_graph"],
-            citation=graphs["citation_graph"]
+            citation=graphs["citation_graph"],
+            session_id=clean_query
         )
         
         # Audit Log (Isolated or Strict)

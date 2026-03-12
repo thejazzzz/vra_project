@@ -79,6 +79,7 @@ class ReportState(TypedDict):
 class VRAState(TypedDict, total=False):
     query: str
     user_id: str
+    session_id: str
     audience: Literal["phd", "rd", "industry", "general"]
 
 

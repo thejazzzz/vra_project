@@ -137,13 +137,18 @@ class GraphBuilderAgent:
 
 
         try:
+            # Prefer session_id, fallback to task_id (which is often the session_id in our workflow)
+            session_id = state.get("session_id") or state.get("task_id")
             save_graphs(
                 query, 
                 user_id, 
                 kg, 
                 citation_graph, 
-                state.get("research_analytics")
+                state.get("research_analytics"),
+                session_id=session_id
             )
+            if session_id:
+                logger.info(f"✅ Successfully persisted graphs for session_id={session_id}")
         except Exception as e:
             logger.error(f"Failed to persist graphs for query={query}: {e}")
 

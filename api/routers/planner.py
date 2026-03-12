@@ -86,6 +86,7 @@ async def plan_task(payload: ResearchRequest, current_user: User = Depends(get_c
         state = VRAState(
             query=query,
             user_id=user_id,
+            session_id=session_id,
             collected_papers=[],
             selected_papers=[],
             added_papers=[],

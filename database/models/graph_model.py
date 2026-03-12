@@ -9,6 +9,7 @@ class Graph(Base):
 
     query = Column(String(500), nullable=False, index=True)
     user_id = Column(String(255), nullable=False, index=True)
+    session_id = Column(String(255), nullable=True, index=True) # Recommended: Unique ID from research_sessions
 
     knowledge_graph = Column(JSON, nullable=True)
     citation_graph = Column(JSON, nullable=True)

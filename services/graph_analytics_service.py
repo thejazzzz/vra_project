@@ -20,7 +20,7 @@ class GraphAnalyticsService:
         _data = graph_data
         if "edges" in _data and "links" not in _data:
             _data = {**_data, "links": _data["edges"]}
-        self.G = nx.node_link_graph(_data, edges="links")
+        self.G = nx.node_link_graph(_data)
         
     def analyze(self) -> Dict[str, Any]:
         """Run full suite of research analytics."""

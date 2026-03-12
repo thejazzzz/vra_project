@@ -41,21 +41,24 @@ async def approve_graph(
     """
     logger.info(f"🔍 Approval Request for ID: {query} (user: {current_user.id})")
     
-    actual_query = query.strip().lower()
-    session_record = db.query(ResearchSession).filter(ResearchSession.session_id == query).first()
-    if session_record:
-        actual_query = session_record.query.strip().lower()
-        logger.info(f"✅ Translated Session UUID {query} to Query: '{actual_query}'")
-    else:
-        logger.warning(f"⚠️ No session record found for ID: {query}. Using as is (standardized).")
-
-    data = load_graphs(actual_query, current_user.id)
+    # ⚠️ Use session_id (the UUID in the path) directly for loading
+    data = load_graphs(query, current_user.id)
+    
     if not data or not data.get("knowledge_graph"):
-        logger.error(f"❌ Graph data not found in DB for query: '{actual_query}' (user: {current_user.id})")
+        # Fallback to translation only if direct UUID lookup fails (legacy or edge case)
+        session_record = db.query(ResearchSession).filter(ResearchSession.session_id == query).first()
+        if session_record:
+            actual_query = session_record.query.strip().lower()
+            logger.info(f"♻️ Direct UUID lookup failed. Falling back to translated query: '{actual_query}'")
+            data = load_graphs(actual_query, current_user.id)
+
+    if not data or not data.get("knowledge_graph"):
+        logger.error(f"❌ Graph data not found in DB for session/query: '{query}' (user: {current_user.id})")
         raise HTTPException(status_code=404, detail=f"Graph not found for approval (ID: {query}).")
     
     kg = data["knowledge_graph"]
-    logger.info(f"📊 Graph data retrieved. Nodes: {len(kg.get('nodes', []))}, Edges: {len(kg.get('links', []))}")
+    actual_query = data.get("query", query) # Use query from DB if found
+    logger.info(f"📊 Graph data retrieved for '{actual_query}'. Nodes: {len(kg.get('nodes', []))}, Edges: {len(kg.get('links', []))}")
     
     run_meta = kg.get("graph", {}).get("meta", {})
     
@@ -100,18 +103,15 @@ def edit_graph(
     db: Session = Depends(get_db)
 ):
     """Handles UUID (session_id) or Query string for editing."""
-    actual_query = query.strip().lower()
-    session_record = db.query(ResearchSession).filter(ResearchSession.session_id == query).first()
-    if session_record:
-        actual_query = session_record.query.strip().lower()
-    
     user_id = current_user.id
     try:
-        graphs = load_graphs(actual_query, user_id)
+        graphs = load_graphs(query, user_id)
         if not graphs or not graphs.get("knowledge_graph"):
             raise HTTPException(status_code=404, detail="Graph not found")
         
         kg = graphs["knowledge_graph"]
+        actual_query = graphs.get("query", query)
+        
         updated_kg = apply_graph_edit(kg, request.action, request.model_dump())
         
         save_graphs(
@@ -119,7 +119,8 @@ def edit_graph(
             user_id=user_id, 
             knowledge=updated_kg, 
             citation=graphs.get("citation_graph", {}), 
-            analytics=graphs.get("research_analytics", {})
+            analytics=graphs.get("research_analytics", {}),
+            session_id=query if query != actual_query else graphs.get("session_id")
         )
         
         def _recompute():
@@ -145,14 +146,9 @@ def get_graphs(
     db: Session = Depends(get_db)
 ):
     """Handles UUID (session_id) or Query string for loading."""
-    actual_query = query.strip().lower()
-    session_record = db.query(ResearchSession).filter(ResearchSession.session_id == query).first()
-    if session_record:
-        actual_query = session_record.query.strip().lower()
-    
     user_id = current_user.id
     try:
-        graphs = load_graphs(actual_query, user_id)
+        graphs = load_graphs(query, user_id)
     except Exception as e:
         logger.error(f"Graph load error: {type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to load graphs")

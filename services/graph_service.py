@@ -469,9 +469,7 @@ def build_knowledge_graph(
         len(aggregated_edges) if aggregated_edges else 0
     )
 
-    # NOTE: NetworkX 3.4+ changed the default edge key from "links" to "edges".
-    # We explicitly pin it to "links" so the frontend always receives the same key.
-    return json_graph.node_link_data(G, edges="links")
+    return json_graph.node_link_data(G)
 
 
 def build_citation_graph(selected_papers: List[Dict]) -> Dict:
@@ -530,8 +528,7 @@ def build_citation_graph(selected_papers: List[Dict]) -> Dict:
     current_year = datetime.datetime.now().year
     compute_citation_metrics(G, current_year)
     
-    # Explicitly keep "links" as the edge key for cross-version consistency.
-    return json_graph.node_link_data(G, edges="links")
+    return json_graph.node_link_data(G)
 
 
 def compute_betweenness(citation_graph):
@@ -632,8 +629,8 @@ def enrich_knowledge_graph(kg_data: Dict, cg_data: Dict) -> Dict:
             if "edges" in d and "links" not in d:
                 d = {**d, "links": d["edges"]}
             return d
-        G_kg = nx.node_link_graph(_normalise(kg_data), edges="links")
-        G_cg = nx.node_link_graph(_normalise(cg_data), edges="links")
+        G_kg = nx.node_link_graph(_normalise(kg_data))
+        G_cg = nx.node_link_graph(_normalise(cg_data))
     except Exception as exc:
         logger.error("Failed to reconstruct graphs for enrichment: %s", exc)
         return kg_data
@@ -661,7 +658,7 @@ def enrich_knowledge_graph(kg_data: Dict, cg_data: Dict) -> Dict:
             enriched += 1
 
     logger.info("🔗 Cross-Graph: Enriched %d KG nodes", enriched)
-    return json_graph.node_link_data(G_kg, edges="links")
+    return json_graph.node_link_data(G_kg)
 
 
 def recompute_analytics_for_saved_graph(query: str, user_id: str):

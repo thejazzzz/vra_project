@@ -1,0 +1,29 @@
+﻿commit beebeba88ac2b5a0f4d0bbcf77a505d654e7fa5b
+Author: thejazzzz <thejasthomas2@gmail.com>
+Date:   Mon Mar 9 11:09:12 2026 +0530
+
+    feat: Introduce API endpoints for graph management including approval, editing, and retrieval, alongside a new planner for orchestrating research workflows and session state.
+
+commit 163a451caf2cc5dfcb402f8faf161c183dad2bbf
+Author: thejazzzz <thejasthomas2@gmail.com>
+Date:   Mon Mar 9 10:49:01 2026 +0530
+
+    feat: Add API endpoints for graph approval, editing, and retrieval, supporting both session IDs and query strings.
+
+commit ed7f4c1d53db822bbf567ceb60b4299190a1fc98
+Author: thejazzzz <thejasthomas2@gmail.com>
+Date:   Mon Mar 9 10:03:01 2026 +0530
+
+    feat: add API endpoints for graph approval, editing, and retrieval, supporting both query strings and session IDs.
+
+commit 2a29467245e6a006a7449b316d5a9f23d9909b24
+Author: thejazzzz <thejasthomas2@gmail.com>
+Date:   Mon Mar 9 09:11:54 2026 +0530
+
+    feat: Initialize the FastAPI application with core configuration, middleware, and router integration.
+
+commit 1d97ebc0ade5635db37a08922202f943f4f8fb4a
+Author: thejazzzz <thejasthomas2@gmail.com>
+Date:   Sun Mar 8 22:57:17 2026 +0530
+
+    feat: Add graphs API router with endpoints for graph retrieval, editing, and approval, and integrate it into the main FastAPI application.

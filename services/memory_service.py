@@ -45,6 +45,7 @@ class MemoryService:
         for c in concepts:
             c_id = c.get("id")
             if not c_id: continue
+            c_id = c_id[:255] # Truncate to DB schema
             
             stat = db.scalar(select(GlobalConceptStats).where(GlobalConceptStats.concept_id == c_id))
             
@@ -75,9 +76,12 @@ class MemoryService:
     def _upsert_edges(db: Session, links: List[Dict]):
         now = datetime.now(timezone.utc)
         for l in links:
-            s, t = l["source"], l["target"]
-            rel = l.get("relation", "related_to")
+            s = l["source"][:255] if isinstance(l.get("source"), str) else str(l.get("source", ""))[:255]
+            t = l["target"][:255] if isinstance(l.get("target"), str) else str(l.get("target", ""))[:255]
+            rel = l.get("relation", "related_to")[:255]
             conf = l.get("confidence", 0.5)
+            
+            if not s or not t: continue
             
             # Skip meta
             if rel == "appears_in": continue
