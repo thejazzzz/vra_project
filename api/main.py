@@ -39,7 +39,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting VRA Backend — initializing DB")
     try:
-        init_db()
+        # init_db()
+        pass
     except Exception as e:
         logger.error(f"❌ Failed to initialize database: {e}", exc_info=True)
         raise
@@ -55,6 +56,10 @@ app = FastAPI(
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
 
 # CORS Configuration
 if env == "local":

@@ -4,20 +4,22 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from urllib.parse import quote_plus
 
-DB_USER = os.getenv("POSTGRES_USER")
-DB_PASS = os.getenv("POSTGRES_PASSWORD")
-DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
-DB_PORT = os.getenv("POSTGRES_PORT", "5432")
-DB_NAME = os.getenv("POSTGRES_DB")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-if not all([DB_USER, DB_PASS, DB_NAME]):
-    raise ValueError("Database credentials must be provided via environment variables")
-
-DATABASE_URL = (
-    f"postgresql://{quote_plus(DB_USER)}:{quote_plus(DB_PASS)}@"
-    f"{DB_HOST}:{DB_PORT}/{quote_plus(DB_NAME)}"
-)
-
+if not DATABASE_URL:
+    DB_USER = os.getenv("POSTGRES_USER")
+    DB_PASS = os.getenv("POSTGRES_PASSWORD")
+    DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
+    DB_PORT = os.getenv("POSTGRES_PORT", "5432")
+    DB_NAME = os.getenv("POSTGRES_DB")
+    
+    if not all([DB_USER, DB_PASS, DB_NAME]):
+        raise ValueError("Database credentials must be provided via DATABASE_URL or POSTGRES_* environment variables")
+    
+    DATABASE_URL = (
+        f"postgresql://{quote_plus(DB_USER)}:{quote_plus(DB_PASS)}@"
+        f"{DB_HOST}:{DB_PORT}/{quote_plus(DB_NAME)}"
+    )
 engine = create_engine(
     DATABASE_URL,
     echo=False,
