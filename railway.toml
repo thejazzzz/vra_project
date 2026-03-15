@@ -3,3 +3,4 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "python api/main.py"
+
