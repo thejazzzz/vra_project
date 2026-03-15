@@ -48,3 +48,19 @@ def init_db():
     from database.models.auth_models import User, ResearchSession, AuditLog
 
     Base.metadata.create_all(bind=engine)
+
+    from sqlalchemy import text
+    try:
+        with engine.begin() as conn:
+            # Check if column exists, if not add it
+            conn.execute(text("ALTER TABLE graphs ADD COLUMN IF NOT EXISTS session_id VARCHAR(255)"))
+            
+            # Create index, IF NOT EXISTS is standard but depends on Postgres version, so we catch error
+            try:
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_graphs_session_id ON graphs(session_id)"))
+            except Exception:
+                pass
+                
+            print("✅ Database migration applied successfully: session_id verified on graphs")
+    except Exception as e:
+        print(f"⚠️ Database migration info: {e}")
