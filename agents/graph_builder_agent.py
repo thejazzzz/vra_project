@@ -139,6 +139,12 @@ class GraphBuilderAgent:
         try:
             # Prefer session_id, fallback to task_id (which is often the session_id in our workflow)
             session_id = state.get("session_id") or state.get("task_id")
+            print(f"DEBUG: About to save graphs")
+            print(f"  query={query}")
+            print(f"  user_id={user_id}")
+            print(f"  session_id={session_id}")
+            print(f"  state keys={list(state.keys())}")
+            
             save_graphs(
                 query, 
                 user_id, 
@@ -149,8 +155,10 @@ class GraphBuilderAgent:
             )
             if session_id:
                 logger.info(f"✅ Successfully persisted graphs for session_id={session_id}")
+            else:
+                logger.warning(f"⚠️ Graphs saved but session_id was None!")
         except Exception as e:
-            logger.error(f"Failed to persist graphs for query={query}: {e}")
+            logger.error(f"Failed to persist graphs for query={query}: {e}", exc_info=True)
 
         # ----------------------------
         # Build Author Graph (Phase 3)
