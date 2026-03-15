@@ -39,8 +39,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting VRA Backend — initializing DB")
     try:
-        # init_db()
-        pass
+        init_db()
     except Exception as e:
         logger.error(f"❌ Failed to initialize database: {e}", exc_info=True)
         raise
