@@ -40,7 +40,9 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting VRA Backend — initializing DB")
     try:
         init_db()
+        print("✅ Database initialized successfully")  # Add this
     except Exception as e:
+        print(f"❌ Failed to initialize database: {e}")  # Add this
         logger.error(f"❌ Failed to initialize database: {e}", exc_info=True)
         raise
     yield
