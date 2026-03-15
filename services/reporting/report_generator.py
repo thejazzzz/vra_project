@@ -10,7 +10,7 @@ from services.reporting.context_builder import ContextBuilder
 from services.reporting.prompts import PROMPT_TEMPLATES, SYSTEM_PROMPT
 from services.reporting.appendix_generator import AppendixGenerator
 from services.llm_service import generate_response
-from services.llm_factory import LLMProvider
+from services.llm_factory import LLMProvider, LLMFactory
 
 logger = logging.getLogger(__name__)
 
@@ -81,22 +81,19 @@ class ReportGenerator:
         report_provider_env = os.getenv("REPORT_PROVIDER", "").lower()
         
         provider = None
-        model_name = None
         
         # Explicit Resolution
         if report_provider_env == "local":
             provider = LLMProvider.LOCAL
-            model_name = os.getenv("LOCAL_MODEL", "llama3")
         elif report_provider_env == "openai":
             provider = LLMProvider.OPENAI
-            model_name = os.getenv("OPENAI_MODEL", "gpt-4o")
         elif report_provider_env == "azure":
             provider = LLMProvider.AZURE
-            model_name = os.getenv("AZURE_DEPLOYMENT_NAME", "azure-gpt-4")
         else:
             # Default to OPENROUTER for "openrouter", empty, unset, or unknown values
             provider = LLMProvider.OPENROUTER
-            model_name = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+
+        model_name = LLMFactory.get_default_model(provider)
 
         # 5. Generate
         logger.info(f"Generating section {section_id} with {provider} ({model_name})...")
@@ -159,11 +156,17 @@ class ReportGenerator:
         
         # NOTE: Resolve model name dynamically
         provider_env = os.getenv("REPORT_PROVIDER", "local").lower()
-        model_name = "Unknown"
+        
         if provider_env == "local":
-             model_name = os.getenv("LOCAL_MODEL", "llama3:8b")
-        elif provider_env == "openrouter":
-             model_name = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+             provider = LLMProvider.LOCAL
+        elif provider_env == "openai":
+             provider = LLMProvider.OPENAI
+        elif provider_env == "azure":
+             provider = LLMProvider.AZURE
+        else:
+             provider = LLMProvider.OPENROUTER
+             
+        model_name = LLMFactory.get_default_model(provider)
         
         return f"""
 ---

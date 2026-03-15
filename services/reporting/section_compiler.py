@@ -5,7 +5,7 @@ import time
 
 from state.state_schema import ReportState, ReportSectionState
 from services.llm_service import generate_response
-from services.llm_factory import LLMProvider
+from services.llm_factory import LLMProvider, LLMFactory
 from services.reporting.prompts import PROMPT_TEMPLATES, SYSTEM_PROMPTS
 from enum import Enum
 import os
@@ -41,11 +41,11 @@ class SectionCompiler:
         
         # Primary (High Quality)
         self.primary_provider = self._parse_provider(os.getenv("PRIMARY_PROVIDER") or os.getenv("REPORT_PROVIDER") or "openai")
-        self.primary_model = os.getenv("PRIMARY_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4o"
+        self.primary_model = os.getenv("PRIMARY_MODEL") or LLMFactory.get_default_model(self.primary_provider)
         
         # Secondary (High Speed/Low Cost)
         self.secondary_provider = self._parse_provider(os.getenv("SECONDARY_PROVIDER") or "local")
-        self.secondary_model = os.getenv("SECONDARY_MODEL") or os.getenv("LOCAL_MODEL") or "llama3:8b"
+        self.secondary_model = os.getenv("SECONDARY_MODEL") or LLMFactory.get_default_model(self.secondary_provider)
         
         # Safety
         self.max_cloud_calls = int(os.getenv("MAX_CLOUD_CALLS", "15"))

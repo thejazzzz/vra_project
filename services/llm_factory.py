@@ -101,10 +101,15 @@ class LLMFactory:
 
     @staticmethod
     def get_default_model(provider: str) -> str:
+        model = "gpt-3.5-turbo"
         if provider == LLMProvider.OPENROUTER:
-            return os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+            model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
         elif provider == LLMProvider.OPENAI:
-            return os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         elif provider == LLMProvider.LOCAL:
-            return os.getenv("LOCAL_MODEL", "llama3")
-        return "gpt-3.5-turbo"
+            model = os.getenv("LOCAL_MODEL", "llama3")
+        elif provider == LLMProvider.AZURE:
+            model = os.getenv("AZURE_DEPLOYMENT_NAME", "azure-gpt-4")
+            
+        print(f"LLM resolved -> provider={provider}, model={model}")
+        return model
