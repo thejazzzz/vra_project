@@ -18,7 +18,7 @@ class Graph(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    __table_args__ = (UniqueConstraint("query", "user_id", name="uq_graph_query_user"),)
+    __table_args__ = (UniqueConstraint("session_id", name="uq_graph_session"),)
 
 class UserGraphOverride(Base):
     """

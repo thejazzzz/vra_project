@@ -12,6 +12,9 @@ def save_graphs(query: str, user_id: str, knowledge: dict, citation: dict, analy
     print(f"User: {user_id}")
     print(f"Session: {session_id}")
     
+    if not session_id:
+        raise ValueError("session_id is required to save graphs")
+
     clean_query = query.strip().lower()
     with SessionLocal() as db:
         try:
@@ -28,21 +31,14 @@ def save_graphs(query: str, user_id: str, knowledge: dict, citation: dict, analy
             stmt = insert(Graph).values(**values)
             
             # If session_id is provided, it's our most unique key
-            conflict_keys = ["query", "user_id"]
-            if session_id:
-                # We still use the uq_graph_query_user constraint usually, 
-                # but if we add a session_id constraint we'd use that.
-                # For now, stick to query/user_id for the Postgres ON CONFLICT 
-                # but ensure session_id is updated.
-                pass
-
+            # Enforced ON CONFLICT utilizing the uq_graph_session unique constraint
             stmt = stmt.on_conflict_do_update(
-                index_elements=["query", "user_id"],
+                index_elements=["session_id"],
                 set_={
                     "knowledge_graph": knowledge,
                     "citation_graph": citation,
                     "research_analytics": analytics or {},
-                    "session_id": session_id # Ensure it's populated on update
+                    "query": clean_query # Optional update in case query diverges per session
                 }
             )
 
@@ -55,21 +51,12 @@ def save_graphs(query: str, user_id: str, knowledge: dict, citation: dict, analy
 
 
 def load_graphs(query_or_session: str, user_id: str) -> Optional[Dict]:
-    """Loads graphs by session_id (preferred) or query string."""
+    """Loads graphs strictly by session_id."""
     with SessionLocal() as db:
-        # ⚠️ Try lookup by session_id first (UUID)
         row = db.query(Graph).filter(
             Graph.session_id == query_or_session,
             Graph.user_id == user_id
         ).first()
-
-        # Fallback to query lookup (legacy or manual tool trigger)
-        if not row:
-            clean_query = query_or_session.strip().lower()
-            row = db.query(Graph).filter(
-                Graph.query == clean_query,
-                Graph.user_id == user_id
-            ).first()
 
         if not row:
             return None

@@ -52,15 +52,40 @@ def init_db():
     from sqlalchemy import text
     try:
         with engine.begin() as conn:
-            # Check if column exists, if not add it
+            # 1. Ensure the column exists cleanly
             conn.execute(text("ALTER TABLE graphs ADD COLUMN IF NOT EXISTS session_id VARCHAR(255)"))
             
-            # Create index, IF NOT EXISTS is standard but depends on Postgres version, so we catch error
+            # 2. Idempotent constraint and index additions
+            conn.execute(text("""
+            DO $$
+            BEGIN
+                -- Drop the old flawed constraint if it still exists
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'uq_graph_query_user'
+                ) THEN
+                    ALTER TABLE graphs DROP CONSTRAINT uq_graph_query_user;
+                END IF;
+
+                -- Add the new session constraint
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'uq_graph_session'
+                ) THEN
+                    ALTER TABLE graphs ADD CONSTRAINT uq_graph_session UNIQUE (session_id);
+                END IF;
+            END
+            $$;
+            """))
+            
+            # Create index
             try:
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_graphs_session_id ON graphs(session_id)"))
             except Exception:
                 pass
                 
-            print("✅ Database migration applied successfully: session_id verified on graphs")
+            print("✅ Database migrations applied successfully")
     except Exception as e:
         print(f"⚠️ Database migration info: {e}")
