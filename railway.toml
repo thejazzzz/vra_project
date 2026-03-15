@@ -2,5 +2,4 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "PYTHONPATH=. python api/main.py"
-
+startCommand = "python -m api.main"
