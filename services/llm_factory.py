@@ -103,7 +103,7 @@ class LLMFactory:
     def get_default_model(provider: str) -> str:
         model = "gpt-3.5-turbo"
         if provider == LLMProvider.OPENROUTER:
-            model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+            model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-pro-exp-02-05:free")
         elif provider == LLMProvider.OPENAI:
             model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         elif provider == LLMProvider.LOCAL:

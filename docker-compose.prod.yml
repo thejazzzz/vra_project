@@ -64,7 +64,7 @@ services:
             OPENAI_API_KEY: ${OPENAI_API_KEY}
             OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
             OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-            OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-exp:free}
+            OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-pro-exp-02-05:free}
 
             # LLM Routing
             VRA_HYBRID_MODE: ${VRA_HYBRID_MODE:-true}
