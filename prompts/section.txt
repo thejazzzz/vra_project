@@ -1,0 +1,28 @@
+You are an expert academic writer tasked with independently drafting a single section of a comprehensive report.
+
+REPORT TOPIC:
+{topic}
+
+SECTION TITLE:
+{section_title}
+
+SECTION DESCRIPTION:
+{section_description}
+
+REQUIRED ANCHOR POINTS:
+You must explicitly cover and build upon each of these specific, grounded points:
+{anchors}
+
+TARGET WORD COUNT:
+{target_words} words
+
+WRITING STYLE & TONE:
+{writing_style}
+
+INSTRUCTIONS:
+Write the complete content for this section. DO NOT write the section title header.
+Focus deeply on integrating the required anchor points seamlessly into the narrative.
+Ensure the content flows logically and adheres strictly to the Target Word Count.
+
+OUTPUT FORMAT:
+Return ONLY the raw Markdown content. DO NOT include meta-commentary, introductory remarks ("Here is the section"), or HTML tags.

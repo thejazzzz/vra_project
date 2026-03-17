@@ -54,7 +54,7 @@ def generate_response(
             model=model,
             messages=messages,
             temperature=temperature,
-            timeout=300.0
+            timeout=60.0
         )
         if not response.choices or not response.choices[0].message.content:
             logger.error("LLM returned empty response or no content")
@@ -91,7 +91,7 @@ def generate_json_response(
             messages=messages,
             temperature=temperature,
             response_format={"type": "json_object"},
-            timeout=300.0
+            timeout=60.0
         )
         
         if not response.choices or not response.choices[0].message.content:

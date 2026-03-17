@@ -1,0 +1,14 @@
+Expand the following report section by adding specific examples, detailed explanations, and deeper analysis of the points already mentioned.
+
+SECTION TEXT:
+{section_text}
+
+TARGET INCREASE:
+Add approximately {words_to_add} words.
+
+INSTRUCTIONS:
+Do NOT simply repeat or arbitrarily rephrase existing sentences. You must ADD value. Introduce depth, clarify concepts, or explore implications from the existing text.
+Preserve the existing structure and tone.
+
+OUTPUT FORMAT:
+Return the complete, expanded section text in Markdown. Do not include meta-commentary.

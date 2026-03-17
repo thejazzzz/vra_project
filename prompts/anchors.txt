@@ -1,0 +1,20 @@
+You are an expert research analyst.
+
+Your goal is to generate 5-8 highly specific "semantic anchors" (key points) that must be covered in a specific section of a report.
+
+SECTION TITLE:
+{section_title}
+
+SECTION DESCRIPTION:
+{section_description}
+
+AVAILABLE CONTEXT (from retrieved papers):
+{context}
+
+INSTRUCTIONS:
+Generate 5-8 bullet points. These points must represent the most critical information, entities, metrics, or arguments that should be included in this specific section. Ensure they are grounded in the available context provided.
+
+OUTPUT FORMAT:
+Return ONLY the bulleted list. No introductory or concluding remarks.
+- Point 1
+- Point 2

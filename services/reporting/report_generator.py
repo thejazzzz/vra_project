@@ -115,39 +115,111 @@ class ReportGenerator:
             "model_name": model_name
         }
 
-    def generate_report(self, state: Dict[str, Any]) -> str:
+    async def generate_report_async(self, state: Dict[str, Any]) -> str:
         """
-        Legacy batch generation method.
+        Phase 12: Parallel Section Generation using asyncio.
+        Orchestrates Phases 1-5 concurrently without blocking.
         """
-        logger.info("ReportGenerator: Starting legacy batch report generation...")
+        import asyncio
+        from services.reporting.outline_generator import OutlineGenerator
+        from services.reporting.anchor_generator import AnchorGenerator
+        from services.reporting.independent_generator import IndependentGenerator
+        from services.reporting.global_polisher import GlobalPolisher
+        from services.reporting.section_cache import SectionCache
         
-        # 1. Metadata Header
-        header = self._build_header(state)
-        report_parts: List[str] = [header]
-        report_parts.append(f"# Research Report: {state.get('query', 'Untitled')}\n")
+        import uuid
+        session_id = state.get("session_id", uuid.uuid4().hex)
+        state["session_id"] = session_id
+        topic = state.get("query", "Unknown Topic")
         
-        # 2. Plan
-        sections = SectionPlanner.plan_report(state)
+        logger.info("ReportGenerator: Starting Phased Report Architecture...")
         
-        # 3. Execute Sections
-        for section in sections:
-            logger.info(f"ReportGenerator: Processing section '{section.section_id}'")
-            try:
-                result = self.generate_section_content(section.section_id, state)
-                content = result["content"]
-                report_parts.append(f"## {section.title}\n{content}\n")
-            except Exception as e:
-                logger.error(f"Failed to generate section {section.section_id}: {e}")
-                report_parts.append(f"## {section.title}\n*Generation failed.*\n")
+        # Phase 1: Outline
+        outline_data = SectionCache.get(session_id, "outline")
+        if not outline_data:
+            logger.info("ReportGenerator: Running Phase 1 (Outline)...")
+            outline = await asyncio.to_thread(OutlineGenerator.generate_outline, state)
+            SectionCache.set(session_id, "outline", outline)
+        else:
+            logger.info("ReportGenerator: Found cached Outline.")
+            outline = outline_data
             
-            time.sleep(0.5)
-
-        # 4. Footer
-        footer = self._build_footer(state)
-        report_parts.append(footer)
+        # Define the per-section execution pipeline
+        semaphore = asyncio.Semaphore(3)
         
-        full_report = "\n".join(report_parts)
-        return full_report
+        from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
+        
+        @retry(
+            wait=wait_exponential(min=2, max=10),
+            stop=stop_after_attempt(3),
+            retry=retry_if_exception_type((asyncio.TimeoutError, ConnectionError, OSError))
+        )
+        async def process_section(sec_dict: Dict[str, Any]) -> str:
+            async with semaphore:
+                return await asyncio.wait_for(_process_section_impl(sec_dict), timeout=120.0)
+
+        async def _process_section_impl(sec_dict: Dict[str, Any]) -> str:
+            sec_id = sec_dict.get("section_id", "unknown_section")
+            sec_title = sec_dict.get("title", "Untitled Section")
+            sec_desc = sec_dict.get("description", "")
+            tw = sec_dict.get("target_words", 500)
+            
+            if not sec_dict.get("section_id"):
+                 logger.warning("ReportGenerator received a section without 'section_id'. Falling back to 'unknown_section'.")
+            
+            # Check full section cache
+            cached_section = SectionCache.get(session_id, f"finished_{sec_id}")
+            if cached_section:
+                 return f"## {sec_title}\n{cached_section['content']}\n"
+                 
+            # Phase 2: Anchors
+            cached_anchors = SectionCache.get(session_id, f"anchors_{sec_id}")
+            if not cached_anchors:
+                anchors = await asyncio.to_thread(AnchorGenerator.generate_anchors, sec_title, sec_desc, state)
+                SectionCache.set(session_id, f"anchors_{sec_id}", {"anchors": anchors})
+            else:
+                anchors = cached_anchors["anchors"]
+                
+            # Phase 3: Content Generation
+            cached_content = SectionCache.get(session_id, f"content_{sec_id}")
+            if not cached_content:
+                content = await asyncio.to_thread(IndependentGenerator.generate_section, topic, sec_title, sec_desc, anchors, tw)
+                SectionCache.set(session_id, f"content_{sec_id}", {"content": content})
+            else:
+                content = cached_content["content"]
+                
+            # Phase 4: Expansion
+            final_section = await asyncio.to_thread(IndependentGenerator.expand_section_if_needed, content, tw)
+            
+            # Cache completed
+            SectionCache.set(session_id, f"finished_{sec_id}", {"content": final_section})
+            return f"## {sec_title}\n{final_section}\n"
+
+        # Phase 12: Parallel Execution
+        logger.info("ReportGenerator: Running Phase 12 (Parallel Processing)...")
+        tasks = [process_section(sec) for sec in outline]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Assemble
+        successful_results = []
+        for i, res in enumerate(results):
+            if isinstance(res, Exception):
+                logger.error(f"ReportGenerator: Section generation failed for {outline[i]['section_id']}: {res}")
+                successful_results.append(f"## {outline[i]['title']}\n[Content generation failed: {res}]\n")
+            else:
+                successful_results.append(res)
+                
+        assembled_report = "\n\n".join(successful_results)
+        
+        # Phase 5: Global Consistency
+        logger.info("ReportGenerator: Running Phase 5 (Global Polish)...")
+        final_polished = await asyncio.to_thread(GlobalPolisher.run_consistency_pass, assembled_report)
+        
+        # Add Headers/Footers
+        header = self._build_header(state)
+        footer = self._build_footer(state)
+        
+        return f"{header}\n# Research Report: {topic}\n\n{final_polished}\n{footer}"
     
     def _build_header(self, state: Dict[str, Any]) -> str:
         """Generates reproducibility metadata block."""

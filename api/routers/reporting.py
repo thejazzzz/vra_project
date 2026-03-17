@@ -132,6 +132,109 @@ def generate_section(
         logger.error(f"Generate section failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal generation error")
 
+@router.post("/generate_batch")
+async def generate_batch_report(
+    payload: Dict[str, str] = Body(...),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Phase 11 triggers. Kicks off the parallel Celery worker to orchestrate the entire
+    report generation process in completely backgrounded fashion.
+    """
+    session_id = payload.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id required")
+        
+    from services.state_service import load_state_for_query
+    state = load_state_for_query(session_id, current_user.id)
+    if not state:
+        raise HTTPException(status_code=403, detail="Forbidden or session not found")
+        
+    try:
+        from worker import generate_report_task
+        task = generate_report_task.delay(session_id, current_user.id)
+        
+        from services.infrastructure.redis_pool import get_redis_client
+        redis_client = get_redis_client()
+        if not redis_client:
+            logger.error("Redis connection unavailable; cannot enqueue batch job.")
+            raise HTTPException(status_code=503, detail="Service unavailable: Database connection failed.")
+            
+        try:
+            redis_client.setex(f"job_owner:{task.id}", 86400, str(current_user.id))
+        except Exception as e:
+            logger.error(f"Failed to record job owner in Redis: {e}")
+            raise HTTPException(status_code=500, detail="Failed to initialize job state.")
+
+        return {"status": "processing", "job_id": task.id, "session_id": session_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to queue batch report task: {e}")
+        raise HTTPException(status_code=500, detail="Failed to queue report generation.")
+
+@router.get("/batch_status/{job_id}")
+async def get_batch_status(job_id: str, current_user: User = Depends(get_current_user)):
+    """Check the status of a background report generation job."""
+    from services.infrastructure.redis_pool import get_redis_client
+    redis_client = get_redis_client()
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis connection failed")
+        
+    owner = redis_client.get(f"job_owner:{job_id}")
+    
+    owner_id = None
+    if isinstance(owner, bytes):
+        owner_id = owner.decode("utf-8")
+    elif isinstance(owner, str):
+        owner_id = owner
+    elif owner is not None:
+        owner_id = str(owner)
+    
+    if not owner_id or owner_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized or job not found")
+        
+    from worker import celery_app
+    import kombu.exceptions
+    import celery.exceptions
+    
+    try:
+        task = celery_app.AsyncResult(job_id)
+        celery_status = task.status
+        
+        # Map Celery internal states to frontend-friendly structured states
+        normalized_status = "processing"
+        error_msg = None
+        
+        if celery_status == 'SUCCESS':
+            normalized_status = 'success'
+        elif celery_status == 'FAILURE':
+            error_msg = str(task.info).lower()
+            if "timeout" in error_msg or "timed out" in error_msg:
+                normalized_status = "timeout"
+            elif "429" in error_msg or "rate limit" in error_msg:
+                normalized_status = "rate_limited"
+            else:
+                normalized_status = "failed"
+        elif celery_status in ('REVOKED', 'REJECTED'):
+            normalized_status = "failed"
+            error_msg = "Task was cancelled or rejected by the system."
+            
+        response = {
+            "job_id": job_id,
+            "status": normalized_status,
+        }
+        
+        if normalized_status == 'success':
+            response["result"] = task.result
+        elif normalized_status in ('failed', 'timeout', 'rate_limited'):
+            response["error"] = error_msg or str(task.info)
+            
+        return response
+    except (kombu.exceptions.OperationalError, kombu.exceptions.ConnectionError, celery.exceptions.CeleryError, Exception) as e:
+        logger.error(f"Failed to retrieve task status for {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Task state unavailable")
+
 @router.post("/section/{section_id}/review")
 async def review_section(
     section_id: str,

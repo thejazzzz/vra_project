@@ -1,0 +1,31 @@
+You are an expert academic report outliner.
+
+Create a highly structured outline for a report given the parameters below.
+
+TOPIC:
+{topic}
+
+REPORT TYPE:
+{report_type}
+
+TARGET WORD COUNT:
+{target_word_count}
+
+AUDIENCE:
+{audience}
+
+OUTPUT FORMAT:
+Return ONLY a structured outline. Do not include introductory text.
+For each section, explicitly provide:
+- The Section Title
+- A brief Section Description
+- Target Word Count
+
+Example Output:
+1. Introduction
+Description: Overview of the topic and objectives.
+target words: 400
+
+2. Background
+Description: Literature review and historical context.
+target words: 800
