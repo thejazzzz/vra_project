@@ -38,32 +38,49 @@ def generate_response(
     """
     Generates a text response from the LLM.
     """
-    try:
-        client = get_client(provider)
-        
-        # Resolve model if not provided
-        if not model:
-            model = LLMFactory.get_default_model(provider)
+    import time
+    from openai import RateLimitError, APIError
 
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            timeout=60.0
-        )
-        if not response.choices or not response.choices[0].message.content:
-            logger.error("LLM returned empty response or no content")
-            raise LLMGenerationError("LLM returned empty response")
-        return response.choices[0].message.content
+    client = get_client(provider)
     
-    except Exception as e:
-        logger.error(f"LLM Generation Failed ({provider}/{model}): {e}", exc_info=True)
-        raise LLMGenerationError(f"Failed to generate LLM response: {e}") from e
+    # Resolve model if not provided
+    if not model:
+        model = LLMFactory.get_default_model(provider)
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    max_retries_429 = 3
+    base_delay = 15 # Start with 15s delay
+
+    for attempt in range(max_retries_429 + 1):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                timeout=60.0
+            )
+            if not response.choices or not response.choices[0].message.content:
+                logger.error("LLM returned empty response or no content")
+                raise LLMGenerationError("LLM returned empty response")
+            return response.choices[0].message.content
+            
+        except RateLimitError as e:
+            if attempt < max_retries_429:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"Rate limit hit (429) for {provider}/{model}. Retrying in {delay}s... (Attempt {attempt+1}/{max_retries_429})")
+                time.sleep(delay)
+            else:
+                logger.error(f"LLM Generation Failed after retries ({provider}/{model}): {e}", exc_info=True)
+                raise LLMGenerationError(f"Failed to generate LLM response (Rate Limit): {e}") from e
+                
+        except Exception as e:
+            # For non-429 errors, fail immediately or handle appropriately
+            logger.error(f"LLM Generation Failed ({provider}/{model}): {e}", exc_info=True)
+            raise LLMGenerationError(f"Failed to generate LLM response: {e}") from e
 
 def generate_json_response(
     prompt: str, 
@@ -86,20 +103,41 @@ def generate_json_response(
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            response_format={"type": "json_object"},
-            timeout=60.0
-        )
-        
-        if not response.choices or not response.choices[0].message.content:
-            logger.error("LLM returned empty response or no content")
-            raise LLMGenerationError("LLM returned empty response")
+        import time
+        from openai import RateLimitError, APIError
 
-        content = response.choices[0].message.content
-        return json.loads(content)
+        max_retries_429 = 3
+        base_delay = 15 # Start with 15s delay
+
+        for attempt in range(max_retries_429 + 1):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    response_format={"type": "json_object"},
+                    timeout=60.0
+                )
+                
+                if not response.choices or not response.choices[0].message.content:
+                    logger.error("LLM returned empty response or no content")
+                    raise LLMGenerationError("LLM returned empty response")
+
+                content = response.choices[0].message.content
+                return json.loads(content)
+
+            except RateLimitError as e:
+                if attempt < max_retries_429:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(f"JSON Rate limit hit (429) for {provider}/{model}. Retrying in {delay}s... (Attempt {attempt+1}/{max_retries_429})")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"LLM JSON Generation Failed after retries ({provider}/{model}): {e}", exc_info=True)
+                    raise LLMGenerationError(f"Failed to generate JSON response (Rate Limit): {e}") from e
+                    
+            except Exception as e:
+                # Let outer catch block handle parse errors or total failures
+                raise e
 
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse LLM JSON response: {e}. Content: {content}")

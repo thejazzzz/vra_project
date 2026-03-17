@@ -103,25 +103,61 @@ export function ReportDashboard({ sessionId }: ReportDashboardProps) {
         fetchState();
     }, [fetchState]);
 
+    const pollAttemptsRef = useRef<number>(0);
+    const MAX_POLL_ATTEMPTS = 60; // 60 × 5s = 5 min hard cap
+
     // Polling Logic
     useEffect(() => {
-        const shouldPoll =
-            state &&
-            (state.report_status === "in_progress" ||
-                state.report_status === "validating" ||
-                state.report_status === "finalizing" ||
-                state.sections?.some((s) => s.status === "generating"));
+        const isTerminal =
+            !state ||
+            state.report_status === "failed" ||
+            state.report_status === "completed" ||
+            state.report_status === "awaiting_final_review";
 
-        if (shouldPoll) {
-            pollingRef.current = setInterval(fetchState, 5000);
+        const hasGeneratingSection = state?.sections?.some(
+            (s) => s.status === "generating",
+        );
+
+        const shouldPoll =
+            !isTerminal &&
+            (state?.report_status === "in_progress" ||
+                state?.report_status === "validating" ||
+                state?.report_status === "finalizing" ||
+                hasGeneratingSection);
+
+        // Clear existing interval whenever conditions change
+        if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+        }
+
+        if (shouldPoll && pollAttemptsRef.current < MAX_POLL_ATTEMPTS) {
+            pollingRef.current = setInterval(() => {
+                if (pollAttemptsRef.current >= MAX_POLL_ATTEMPTS) {
+                    clearInterval(pollingRef.current!);
+                    pollingRef.current = null;
+                    return;
+                }
+                fetchState();
+                pollAttemptsRef.current += 1;
+            }, 5000);
         } else {
-            if (pollingRef.current) clearInterval(pollingRef.current);
+            // Reset counter when polling stops naturally
+            pollAttemptsRef.current = 0;
         }
 
         return () => {
             if (pollingRef.current) clearInterval(pollingRef.current);
         };
     }, [state, fetchState]);
+
+    // Reset polling counter whenever meaningful progress is detected
+    useEffect(() => {
+        if (state?.sections) {
+            pollAttemptsRef.current = 0;
+        }
+    }, [state?.sections]);
+
 
     const handleInitialized = () => {
         setIsLoading(true);

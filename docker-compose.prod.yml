@@ -64,12 +64,14 @@ services:
             OPENAI_API_KEY: ${OPENAI_API_KEY}
             OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
             OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-            OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-pro-exp-02-05:free}
+            OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.5-pro-exp-03-25:free}
+            GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+            GOOGLE_MODEL: ${GOOGLE_MODEL:-gemini-2.5-pro}
 
             # LLM Routing
             VRA_HYBRID_MODE: ${VRA_HYBRID_MODE:-true}
             PRIMARY_PROVIDER: ${PRIMARY_PROVIDER:-openai}
-            SECONDARY_PROVIDER: ${SECONDARY_PROVIDER:-openrouter}
+            SECONDARY_PROVIDER: ${SECONDARY_PROVIDER:-openai}
             MAX_CLOUD_CALLS: ${MAX_CLOUD_CALLS:-20}
             REPORT_PROVIDER: ${REPORT_PROVIDER:-openai}
 

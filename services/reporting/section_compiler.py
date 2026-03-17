@@ -59,6 +59,7 @@ class SectionCompiler:
         if name == "openai": return LLMProvider.OPENAI
         if name == "azure": return LLMProvider.AZURE
         if name == "openrouter": return LLMProvider.OPENROUTER
+        if name == "google": return LLMProvider.GOOGLE
         return LLMProvider.LOCAL
 
     def _resolve_provider(self, phase: CompilationPhase, section_type: str = "") -> tuple[LLMProvider, str]:

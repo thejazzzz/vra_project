@@ -11,6 +11,7 @@ class LLMProvider:
     OPENROUTER = "openrouter"
     AZURE = "azure"
     LOCAL = "local"
+    GOOGLE = "google"
 
 class LLMFactory:
     """
@@ -54,6 +55,12 @@ class LLMFactory:
             api_version = api_version or os.getenv("AZURE_OPENAI_API_VERSION", "2023-05-15")
             if not api_key or not azure_endpoint:
                 raise ValueError("AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be set")
+                
+        elif provider == LLMProvider.GOOGLE:
+            api_key = api_key or os.getenv("GOOGLE_API_KEY")
+            base_url = base_url or "https://generativelanguage.googleapis.com/v1beta/openai/"
+            if not api_key:
+                raise ValueError("GOOGLE_API_KEY not set")
 
         # 2. Config-Aware Caching
         # Create a cache key based on the effective configuration
@@ -101,15 +108,28 @@ class LLMFactory:
 
     @staticmethod
     def get_default_model(provider: str) -> str:
+        # Safety check: if provider is missing its API Key, fallback to a safe one
+        if provider == LLMProvider.GOOGLE and not os.getenv("GOOGLE_API_KEY"):
+            logger.warning("GOOGLE_API_KEY not found. Falling back to OPENAI.")
+            provider = LLMProvider.OPENAI
+        elif provider == LLMProvider.OPENROUTER and not os.getenv("OPENROUTER_API_KEY"):
+            logger.warning("OPENROUTER_API_KEY not found. Falling back to OPENAI.")
+            provider = LLMProvider.OPENAI
+        elif provider == LLMProvider.OPENAI and not os.getenv("OPENAI_API_KEY"):
+            # If even OpenAI is missing, we have a bigger problem, but we'll try to resolve anyway
+            logger.error("OPENAI_API_KEY not found either!")
+
         model = "gpt-3.5-turbo"
         if provider == LLMProvider.OPENROUTER:
-            model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-pro-exp-02-05:free")
+            model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-pro-exp-03-25:free")
         elif provider == LLMProvider.OPENAI:
             model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         elif provider == LLMProvider.LOCAL:
             model = os.getenv("LOCAL_MODEL", "llama3")
         elif provider == LLMProvider.AZURE:
             model = os.getenv("AZURE_DEPLOYMENT_NAME", "azure-gpt-4")
+        elif provider == LLMProvider.GOOGLE:
+            model = os.getenv("GOOGLE_MODEL", "gemini-2.5-pro")
             
         print(f"LLM resolved -> provider={provider}, model={model}")
         return model
