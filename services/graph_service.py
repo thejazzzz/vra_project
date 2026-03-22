@@ -1,6 +1,7 @@
 # services/graph_service.py
 import logging
 from typing import Dict, List, Any, Optional
+from services.concept_filter import ConceptFilterService
 
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -225,6 +226,14 @@ def build_knowledge_graph(
                 G.add_node(paper_id, type="paper", label=paper_id)
             
             for concept in set(concepts):  # Deduplicate
+                # Secondary concept filter guard: skip any generic meta-terms
+                # that may have leaked through from global_analysis or LLM.
+                # ConceptFilterService already applied at extraction stage,
+                # but this acts as a safety net.
+                if not ConceptFilterService.is_valid_concept(concept):
+                    logger.debug(f"graph_service: skipping filtered concept '{concept}' for paper {paper_id}")
+                    continue
+
                 c_canon = canonical_concept_id(concept)
                 if c_canon not in G: 
                     G.add_node(c_canon, type="concept", label=concept)

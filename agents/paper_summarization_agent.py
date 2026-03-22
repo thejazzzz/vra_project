@@ -3,6 +3,7 @@ import logging
 from services.structured_llm import generate_structured_json
 from database.db import SessionLocal
 from database.models.paper_model import Paper
+from services.concept_filter import ConceptFilterService
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +77,12 @@ class PaperSummarizationAgent:
             else:
                 summary_dict["_status"] = "success"
 
-            # Concepts
+            # Concepts — filter through semantic concept filter to remove
+            # generic meta-terms like "future research", "insights", etc.
             concepts = []
             if "concepts" in summary_dict and isinstance(summary_dict["concepts"], list):
-                concepts = [c.strip().lower() for c in summary_dict["concepts"] if isinstance(c, str)]
+                raw_concepts = [c for c in summary_dict["concepts"] if isinstance(c, str)]
+                concepts = ConceptFilterService.filter_concepts(raw_concepts)
 
             # Relations
             relations = []

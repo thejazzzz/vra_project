@@ -54,3 +54,18 @@ out/
 
 # Temporary test files
 tests/temp/
+test_*.txt
+test_*.log
+pytest_*.txt
+regression_*.txt
+benchmark_*.txt
+debug_*.txt
+debug_*.py
+*_output.txt
+*_out.txt
+*.log
+git_*.txt
+project_tree.txt
+inspect_output.txt
+migration_err.txt
+!Report_Documentation/*.md

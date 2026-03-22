@@ -1,7 +1,7 @@
-# agents/gap_analysis_agent.py
 import logging
 import networkx as nx
 from typing import Dict, List, Any
+from services.concept_filter import ConceptFilterService
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +146,11 @@ class GapAnalysisAgent:
         # Strategy 1: Conceptual Gaps (Under-explored Concepts)
         # --------------------------------------------------------
         for n in concept_nodes:
+            # Final Safety Guard: Skip generic meta-terms or single-word meta-terms
+            if not ConceptFilterService.is_valid_concept(n):
+                logger.debug(f"gap_analysis_agent: skipping generic/meta concept from gap detection: {n}")
+                continue
+
             confidence, paper_count, nature, clustering = compute_confidence_and_nature(n, KG_undirected)
             
             # Thresholds: Low coverage but existed in graph

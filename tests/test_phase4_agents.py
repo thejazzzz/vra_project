@@ -37,7 +37,8 @@ def test_phase4():
 
     # 1. Run Hypothesis Generation
     print("\n--- Running Hypothesis Generation ---")
-    state = hypothesis_generation_agent.run(state)
+    import asyncio
+    state = asyncio.run(hypothesis_generation_agent.run(state))
     
     if state["hypotheses"]:
         print(f"✅ Generated {len(state['hypotheses'])} hypotheses.")
