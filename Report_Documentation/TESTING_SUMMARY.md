@@ -9,9 +9,11 @@ The project utilizes a comprehensive multi-level testing strategy, ensuring robu
 _Verified individual components using `pytest`._
 
 - **Logic Verification**:
-    - `tests/test_abstract_logic.py`: Validates logic for abstract synthesis and late-binding content generation.
+    - `tests/test_abstract_logic.py`: Validates logic for abstract synthesis and late-binding content generation, including behavior when chapter dependencies are skipped.
     - `tests/test_local_ingestion.py`: Ensures local PDF ingestion, text extraction, and metadata parsing work correctly.
     - `tests/test_postgres.py` & `tests/test_chroma.py`: Verifies database connectivity and vector store operations.
+    - `tests/test_validation_fixes.py`: Validates the `ExportService.sanitize_markdown()` logic — confirms dangerous HTML tags (e.g., `<script>`, `<iframe>`) are stripped while preserving safe content.
+    - `tests/test_rate_limit_logic.py`: Verifies the `LLMOrchestrator` global sequential lock and minimum delay enforcement — confirms that 3 concurrent calls take at least `N × LLM_MIN_DELAY` seconds elapsed time.
 - **Infrastructure Testing**:
     - `tests/ping_server.py`: basic health check for the API.
 
@@ -73,7 +75,7 @@ _Frontend interaction validation (Manual & Automated)._
 - **Performance**:
     - **Research Phase**: ~30-60s (Parallelized arXiv searches).
     - **Graph Build**: ~15s (NetworkX in-memory construction).
-    - **Reporting**: ~2-3 mins (Iterative LLM generation).
+    - **Reporting (per section)**: ~2-3 mins per chapter (sequential LLM calls with 12s inter-call delay for Google AI Studio free tier); a full 10-chapter report takes approximately 30-60 minutes depending on provider and rate limits.
 
 ---
 

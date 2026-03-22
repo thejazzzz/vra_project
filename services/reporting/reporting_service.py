@@ -84,6 +84,8 @@ class InteractiveReportingService:
             raise e
         finally:
             db.close()
+        
+        return {}
 
     @staticmethod
     def get_report_state(session_id: str, user_id: str) -> Optional[ReportState]:
@@ -155,8 +157,8 @@ class InteractiveReportingService:
                 model_name = compiler.model_name
                 prompt_version = "compiler_v1.0"
             
-            if not ExportService.validate_markdown(content):
-                 raise ValueError("Generated content failed Markdown validation (unsafe HTML or malformed).")
+            # Sanitize content instead of failing hard
+            content = ExportService.sanitize_markdown(content)
 
             # 7. Update State
             target_section["content"] = content
@@ -192,7 +194,7 @@ class InteractiveReportingService:
         return target_section
 
     @staticmethod
-    def submit_review(session_id: str, user_id: str, section_id: str, accepted: bool, feedback: str = None) -> Dict[str, Any]:
+    def submit_review(session_id: str, user_id: str, section_id: str, accepted: bool, feedback: Optional[str] = None) -> Dict[str, Any]:
         state = load_state_for_query(session_id, user_id)
         if not state or not state.get("report_state"): raise ValueError("State not found")
         

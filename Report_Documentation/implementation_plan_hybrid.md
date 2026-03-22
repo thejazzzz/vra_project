@@ -1,7 +1,7 @@
 # Implementation Plan: Hybrid Execution Strategy for Report Generation (Refined)
 
-> [!WARNING]
-> **DEPRECATED**: This Hybrid LLM Strategy (which explicitly mixed Cloud and Local models) has been superseded by a **Local-First LLM Architecture** using Ollama natively to ensure zero API costs and maximum data privacy. This document remains for historical context only.
+> [!NOTE]
+> **STATUS: IMPLEMENTED** — This Hybrid LLM Strategy is active in the current codebase (`services/reporting/section_compiler.py`). The `VRA_HYBRID_MODE`, `PRIMARY_PROVIDER`, `SECONDARY_PROVIDER`, and `MAX_CLOUD_CALLS` environment variables are all live. The default `PRIMARY_PROVIDER` is **Google AI Studio (Gemini)** and `SECONDARY_PROVIDER` defaults to `local` (Ollama). See `SYSTEM_OVERVIEW.md` Section 8 for full details.
 
 ## Goal
 

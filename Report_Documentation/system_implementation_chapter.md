@@ -60,11 +60,39 @@ The system calculates scientific opportunity using network theory metrics applie
 - **Conceptual Gaps**: Identified via a weighted confidence metric: `Confidence = 0.5*(1 - NormalizedCover) + 0.3*(1 - ClusteringCoef) + 0.2`. Concepts with low representation (Coverage) and low peer connectivity (Clustering) are flagged as under-explored.
 - **Structural Gaps**: Discovered by computing algorithms for weakly connected components. Clusters of papers that are densely connected internally but lack edges bridging them to other clusters represent "structural holes," which the system suggests as immediate opportunities for cross-disciplinary research.
 
-## 5. Execution Strategy and Optimization
+## 5. LLM Architecture & Rate Limit Strategy
 
-The VRA implements a **Local-First Execution Strategy** to balance cognitive rigor with absolute data privacy and operational cost efficiency.
+The VRA employs a **configurable, multi-provider LLM architecture** designed for both production reliability and research flexibility.
 
-- **Local Processing Pipeline**: All activities, ranging from Hypothesis Generation and Global Analysis to Topology interpretation and final reporting, are handled exclusively by local language models (e.g., via Ollama running powerful models like `llama3`).
-- **Cost and Security Paradigm**: By entirely eliminating external cloud dependencies (such as OpenAI/GPT-4o endpoints), the system ensures strict data privacy for sensitive academic or corporate research, zero API latency variability, and zero API expenditure, dramatically reducing the barrier to continuous architectural experimentation.
+### 5.1 LLMFactory
 
-This architecture ensures the system is highly resilient, mathematically objective, and capable of securely generating actionable, robustly formatted research artifacts solely from unstructured local compute resources.
+`services/llm_factory.py` is a factory-pattern client manager. It maintains a cached instance pool keyed by `(provider, api_key, base_url, …)` to avoid unnecessary re-initialization. Supported providers:
+
+| Provider Identifier | Cloud/Local | Default Model | Environment Key |
+|:---|:---|:---|:---|
+| `google` | Cloud | `gemini-2.5-pro` | `GOOGLE_API_KEY`, `GOOGLE_MODEL` |
+| `openai` | Cloud | `gpt-4o-mini` | `OPENAI_API_KEY`, `OPENAI_MODEL` |
+| `openrouter` | Cloud (free tier) | `google/gemini-2.5-pro-exp-03-25:free` | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` |
+| `azure` | Cloud | `azure-gpt-4` | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT` |
+| `local` | Local (Ollama) | `llama3` | `LOCAL_LLM_URL`, `LOCAL_MODEL` |
+
+### 5.2 Hybrid Execution Strategy (SectionCompiler)
+
+`services/reporting/section_compiler.py` implements a **Hybrid Execution Strategy** governed by the `CompilationPhase` enum:
+
+- **`ABSTRACT` (Always Primary)**: The abstract synthesis always uses the primary provider regardless of hybrid mode — it requires the highest reasoning quality.
+- **`REFINE` (Hybrid=On → Primary)**: Final polishing uses the primary provider for tone and precision.
+- **`EXPAND` (Hybrid=On → Secondary)**: Bulk text generation uses the cost-efficient secondary provider.
+- **`DRAFT` (Hybrid=On → Context-Dependent)**: Complex section types (INTRO, CONCLUSION, ANALYSIS) use Primary; structural sections (METHOD, IMPL) use Secondary.
+- **Hybrid=Off**: All phases unconditionally use `PRIMARY_PROVIDER`.
+
+A **Cost Guardrail** (`MAX_CLOUD_CALLS`, default 15) limits cloud API consumption per report. When exceeded, generation automatically falls back to the secondary provider.
+
+### 5.3 LLMOrchestrator
+
+`services/llm/orchestrator.py` adds a centralized, async-safe execution layer:
+
+- **Global Serialization Lock**: An `asyncio.Lock` ensures only one LLM call is in-flight at a time, preventing API rate-limit bursts from concurrent requests.
+- **Minimum Inter-Call Delay**: `LLM_MIN_DELAY` (default `12.0` s) enforces a minimum gap between calls, respecting Google AI Studio's 5 RPM free-tier limit.
+- **Model Chain Fallback**: On any provider failure, the orchestrator iterates through a `MODEL_CHAIN` list. If all models fail, `tenacity` applies exponential back-off (up to 5 attempts) before raising a terminal error.
+- **Rate Limit Detection**: HTTP 429 responses trigger an additional random 5–15 second sleep before switching to the next model.

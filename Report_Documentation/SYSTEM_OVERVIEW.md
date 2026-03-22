@@ -128,7 +128,7 @@ The system is designed to be resilient to common external failures:
 - **API Resilience**: If primary paper sources (e.g., Semantic Scholar) fail, the system falls back to secondary sources (arXiv) or cached results.
 - **Graph Construction**: If a Knowledge Graph cannot be fully populated due to sparse data, the system degrades gracefully to a "Concept-Only" graph, ensuring the user can still proceed with limited analysis.
 - **Gap Analysis Weakness**: If no strong structural gaps are found (low confidence), the Hypothesis Generation agent downgrades its output to "Future Directions" rather than specific "Novel Hypotheses," maintaining intellectual honesty.
-- **Local Generation Focus**: All generation, review, and reporting tasks rely entirely on Local LLMs (e.g., Ollama). This guarantees robust generation decoupled from cloud dependencies, preventing API quota errors or unexpected billing overruns while ensuring strict data privacy.
+- **LLM Provider Resilience**: The system uses a configurable, multi-provider `LLMFactory` (supporting **Google AI Studio / Gemini**, OpenAI, OpenRouter, Azure, and local Ollama) with a primary/secondary fallback chain in `SectionCompiler`. If the primary cloud provider (default: Google Gemini) returns a 429 rate-limit error or times out, generation automatically falls back to the secondary provider. A global sequential `LLMOrchestrator` enforces a minimum inter-call delay (default: 12 s, tunable via `LLM_MIN_DELAY`) to respect Google AI Studio's free-tier limits (5 RPM).
 
 ## 7. Reporting & Formatting
 
@@ -136,8 +136,46 @@ The final phase of the VRA pipeline converts raw output into academic-grade docu
 
 - **Native Exporters**: The Reporting Agent utilizes dedicated formatters to export the multi-stage research data natively to `PDF`, `DOCX`, `Markdown`, and `LaTeX`, preserving structured elements like citations, headers, and reference tables contextually without external dependencies.
 - **Interactive Review**: Users preview live compiled Markdown in the dashboard before initiating large file exports.
+- **Multi-Pass Compilation**: The `SectionCompiler` orchestrates a Draft → Expand → Refine pipeline for each report section, with a separate specialised path for the Abstract (pure synthesis from accepted chapter content).
+- **Markdown Sanitization**: `ExportService.sanitize_markdown()` strips dangerous HTML tags (`<script>`, `<iframe>`, etc.) while preserving safe content and generic code syntax.
 
-## 7. Limitations
+---
+
+## 8. LLM Architecture & Provider Strategy
+
+The system employs a **configurable, multi-provider LLM architecture** rather than a single fixed model:
+
+### LLMFactory (`services/llm_factory.py`)
+
+A factory-pattern client manager that supports the following providers:
+
+| Provider | Identifier | Default Model | Notes |
+|:---|:---|:---|:---|
+| **Google AI Studio** | `google` | `gemini-2.5-pro` (env: `GOOGLE_MODEL`) | Primary production provider |
+| **OpenAI** | `openai` | `gpt-4o-mini` (env: `OPENAI_MODEL`) | Fallback / alternate |
+| **OpenRouter** | `openrouter` | `google/gemini-2.5-pro-exp-03-25:free` | Free-tier fallback |
+| **Azure OpenAI** | `azure` | `azure-gpt-4` (env: `AZURE_DEPLOYMENT_NAME`) | Enterprise option |
+| **Local (Ollama)** | `local` | `llama3` (env: `LOCAL_MODEL`) | Offline / privacy-first |
+
+### SectionCompiler Hybrid Mode (`services/reporting/section_compiler.py`)
+
+Controlled by environment variables:
+
+- `PRIMARY_PROVIDER` / `PRIMARY_MODEL`: Used for high-reasoning phases (Abstract, Refine, complex Drafts). Defaults to `REPORT_PROVIDER` or `openai`.
+- `SECONDARY_PROVIDER` / `SECONDARY_MODEL`: Used for high-volume phases (Expand, simple Drafts). Defaults to `local`.
+- `VRA_HYBRID_MODE` (`true`/`false`): When enabled, routes phases to the optimal provider per the routing matrix above. When disabled, all phases use `PRIMARY_PROVIDER`.
+- `MAX_CLOUD_CALLS` (default 15): Hard cost guardrail — if cloud API calls exceed this threshold, generation automatically falls back to the secondary provider.
+
+### LLMOrchestrator (`services/llm/orchestrator.py`)
+
+A centralized async orchestrator enforcing the following:
+
+- **Sequential Execution**: A global `asyncio.Lock` ensures LLM calls are never made in parallel, preventing rate limit bursts.
+- **Minimum Delay**: A configurable inter-call delay (`LLM_MIN_DELAY`, default `12.0` seconds) respects Google AI Studio's free-tier limit of 5 requests per minute.
+- **Model Chain Fallback**: On failure, the orchestrator steps through a `MODEL_CHAIN` list (e.g., `openai/gpt-4o-mini` → `openrouter/gemini-flash` → `openrouter/llama3.1`) with exponential backoff via `tenacity`.
+- **Rate Limit Detection**: Explicitly detects HTTP 429 errors and applies an additional random 5–15 second back-off before trying the next model.
+
+## 9. Limitations
 
 While powerful, the system operates within specific constraints:
 

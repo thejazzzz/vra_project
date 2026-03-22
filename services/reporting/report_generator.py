@@ -145,7 +145,7 @@ class ReportGenerator:
             outline = outline_data
             
         # Define the per-section execution pipeline
-        semaphore = asyncio.Semaphore(3)
+        semaphore = asyncio.Semaphore(1) # Changed from 3 to 1 for rate limit safety
         
         from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
         

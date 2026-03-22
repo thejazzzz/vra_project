@@ -8,12 +8,14 @@
 - **Constructed** dynamic **Knowledge, Citation, and Author Graphs** using NetworkX to visualize research landscapes and connectivity.
 - **Designed** a **Gap Analysis Agent** capable of identifying both **Conceptual Gaps** (under-explored topics) and **Structural Gaps** (disconnected clusters).
 - **Implemented** LLM-based **Hypothesis Generation** to propose novel, testable research directions rooted in identified graph gaps.
-- **Integrated** a **Local-First LLM Architecture** using Ollama for efficient, secure, and cost-free "High Reasoning" tasks (Drafting, Abstract Generation, Refinement).
+- **Integrated** a **Configurable Multi-Provider LLM Architecture** (`LLMFactory`) with support for **Google AI Studio (Gemini)**, OpenAI, OpenRouter, Azure, and local Ollama. The `SectionCompiler` implements a **Hybrid Execution Strategy** — routing high-reasoning phases (Abstract, Refine) to the primary provider and high-volume phases (Expand, Draft) to an optional secondary provider via `VRA_HYBRID_MODE`.
+- **Built** a centralized `LLMOrchestrator` enforcing **sequential, rate-limited LLM calls** with a global `asyncio.Lock`, configurable minimum inter-call delay (`LLM_MIN_DELAY`, default 12 s), and a multi-model fallback chain using `tenacity` exponential backoff.
 - **Created** a responsive **Research Dashboard** featuring dark mode, interactive graph visualizations, and real-time workflow progress tracking.
 - **Developed** a comprehensive **Reporting Agent** that synthesizes findings and features a robust report formatter exporting natively to **Markdown, DOCX, PDF, and LaTeX**.
 
 ### REMAINING/ENHANCEMENTS
 
+- **Add Rate Limit Awareness per Provider**: Store per-provider call timestamps so the `LLMOrchestrator` can intelligently select the provider not yet rate-limited, rather than always stepping linearly through the `MODEL_CHAIN`.
 - **Enhance** PDF parsing capabilities to reliably extract full-text from all sources, reducing current reliance on abstracts.
 - **Calibrate** graph algorithms (Trend Detection, Gap Confidence) using larger datasets to refine "Saturated" vs "Emerging" classifications.
 - **Integrate** a version control system for Knowledge Graphs (`kg_v1`, `kg_v2`) to allow manual user refinements and branching.

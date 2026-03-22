@@ -166,9 +166,9 @@ class SectionCompiler:
 
         # 3. Expansion Loop
         section["compilation_phase"] = "EXPANDING"
-        passes = 0
-        MAX_PASSES = 2 # Reduced to prevent model hallucination loops
-        MIN_DELTA = 150 # Require substantial addition to keep expanding
+        passes: int = 0
+        MAX_PASSES: int = 2 # Reduced to prevent model hallucination loops
+        MIN_DELTA: int = 150 # Require substantial addition to keep expanding
         
         while current_words < section["target_words"] and passes < MAX_PASSES:
             logger.info(f"Compiler: Expansion Pass {passes+1}/{MAX_PASSES}. Current: {current_words} / {section['target_words']}")
@@ -219,9 +219,9 @@ class SectionCompiler:
         Uses a much larger character budget to accommodate modern LLM token windows.
         """
         lines = context.splitlines()
-        anchors = []
-        total_len = 0
-        MAX_LEN = 65000 # ~15,000 tokens
+        anchors: List[str] = []
+        total_len: int = 0
+        MAX_LEN: int = 65000 # ~15,000 tokens
         
         for line in lines:
             line = line.strip()
@@ -379,8 +379,8 @@ class SectionCompiler:
         # Check first 500 words (intro reuse) or random sampling? 
         # User suggested first 500.
         limit = 500
-        old_set = set(old_words[:limit])
-        new_set = set(new_words[:limit])
+        old_set = set(w for i, w in enumerate(old_words) if i < limit)
+        new_set = set(w for i, w in enumerate(new_words) if i < limit)
         
         if not new_set: return 0.0
         
@@ -401,7 +401,8 @@ class SectionCompiler:
         # Compile regex for case-insensitive replacement
         # \b word boundary might be good but phrases might contain spaces. 
         # Simple string replacement logic:
-        pattern = re.compile("|".join(map(re.escape, forbidden_phrases)), re.IGNORECASE)
+        escaped_phrases = [re.escape(p) for p in forbidden_phrases]
+        pattern = re.compile("|".join(escaped_phrases), re.IGNORECASE)
         
         lines = []
         for line in text.splitlines():
@@ -425,16 +426,8 @@ class SectionCompiler:
         """
         Compiles the Abstract using strict 'Synthesis of Reality' from completed chapters.
         """
-        # Guard: Ensure all other dependencies are accepted
-        incomplete = [
-            s["section_id"] for s in self.state.get("sections", [])
-            if s["section_id"] != "abstract" and s.get("status") != "accepted"
-        ]
-        if incomplete:
-            raise ValueError(
-                f"Cannot generate abstract. Unaccepted sections: {incomplete}"
-            )
-
+        # Guard: Dependencies are already checked by InterativeReportingService.
+        # Removing strict "all sections accepted" block to allow dynamic generation even if some chapters are skipped.
         section["status"] = "generating"
 
 
@@ -515,7 +508,8 @@ class SectionCompiler:
         # Limitations: From Ch 2 (Gaps) or Ch 9 (Future Scope/Limitation)
         # Ch 10 is Future Scope.
         gap_data = self.state.get("research_gaps", [])
-        gaps_str = "\n".join([g.get("rationale", "") for g in gap_data[:3]])
+        top_gaps = [g for i, g in enumerate(gap_data) if i < 3]
+        gaps_str = "\n".join([g.get("rationale", "") for g in top_gaps])
         
         return {
             "problem_statement": problem_val,

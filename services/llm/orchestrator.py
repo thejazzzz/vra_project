@@ -19,6 +19,44 @@ class LLMOrchestrator:
     """
     Centralized LLM Orchestrator that handles multi-model fallback chains and robust retries.
     """
+    _global_llm_lock = None
+    _last_llm_call_time = 0.0
+
+    @classmethod
+    def _get_lock(cls):
+        import asyncio
+        if cls._global_llm_lock is None:
+            try:
+                cls._global_llm_lock = asyncio.Lock()
+            except RuntimeError:
+                # If there's no event loop running yet
+                pass
+        return cls._global_llm_lock
+
+    @classmethod
+    async def _wait_for_rate_limit(cls):
+        import asyncio
+        import time
+        import os
+        
+        lock = cls._get_lock()
+        if not lock:
+            return # fallback if lock creation failed (e.g. sync context)
+
+        async with lock:
+            current_time = time.time()
+            # Default to 12 seconds for Google AI Studio Free Tier (5 RPM)
+            min_delay = float(os.getenv("LLM_MIN_DELAY", "12.0"))
+            
+            elapsed = current_time - cls._last_llm_call_time
+            if elapsed < min_delay:
+                wait_time = min_delay - elapsed
+                logger.info(f"LLMOrchestrator: Global rate limit active. Waiting {wait_time:.2f}s...")
+                await asyncio.sleep(wait_time)
+            
+            # Update the last call time *after* waiting, 
+            # so the next call measures from when this call actually starts
+            cls._last_llm_call_time = time.time()
     
     @staticmethod
     @retry(
@@ -46,6 +84,10 @@ class LLMOrchestrator:
         for provider, model in MODEL_CHAIN:
             try:
                 logger.debug(f"LLMOrchestrator: Attempting with {provider}/{model}")
+                
+                # Apply global rate limit wait before generating
+                await LLMOrchestrator._wait_for_rate_limit()
+
                 return await asyncio.to_thread(
                     generate_response,
                     prompt=prompt,

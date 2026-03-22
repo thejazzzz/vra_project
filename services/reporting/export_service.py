@@ -32,25 +32,22 @@ class ExportService:
             raise 
 
     @staticmethod
-    def validate_markdown(content: str) -> bool:
+    def sanitize_markdown(content: str) -> str:
         """
-        Validates markdown content by checking for basic HTML tag structure.
-        
-        Returns True if safe (no HTML tags detected), False otherwise.
-        Does NOT validate Pandoc compatibility or advanced structure.
+        Sanitizes markdown content by stripping dangerously scriptable or layout-breaking HTML tags.
+        Allows safe HTML (div, span) and generic types (List<String>).
         """
         if not content:
-            return True
+            return ""
             
-        # Tighter Regex: Matches <tag> or </tag> where tag starts with a letter.
-        # This avoiding matching math (x < y) or arrows (Generic<T> might match if T starts with letter, but acceptable risk for now vs complexity)
-        # Actually Generic<T> is NOT an HTML tag, but basic regex might flag it. 
-        # <[a-zA-Z] matches <T
-        # We can accept that risk or require attributes/closing.
-        # Ideally, we want to block <div>, <script>, <a> etc.
+        DANGEROUS_TAGS = r"(script|iframe|object|embed|style|link|meta)"
+        # Regex matches `<script...>`, `</script>`, etc.
+        pattern_str = r"<\/?(?:script|iframe|object|embed|style|link|meta)\b[^>]*>"
+        pattern = re.compile(pattern_str, re.IGNORECASE)
         
-        if re.search(r"<\/?[a-zA-Z][^>]*>", content):
-            logger.warning("Markdown validation failed: HTML tag detected.")
-            return False
+        if pattern.search(content):
+            logger.warning("Dangerous HTML tags detected in markdown. Sanitizing content.")
+            # Remove the dangerous tags
+            content = pattern.sub("", content)
             
-        return True
+        return content
