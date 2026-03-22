@@ -121,7 +121,7 @@ class LLMFactory:
 
         model = "gpt-3.5-turbo"
         if provider == LLMProvider.OPENROUTER:
-            model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-pro-exp-03-25:free")
+            model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash:free")
         elif provider == LLMProvider.OPENAI:
             model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         elif provider == LLMProvider.LOCAL:
@@ -129,7 +129,7 @@ class LLMFactory:
         elif provider == LLMProvider.AZURE:
             model = os.getenv("AZURE_DEPLOYMENT_NAME", "azure-gpt-4")
         elif provider == LLMProvider.GOOGLE:
-            model = os.getenv("GOOGLE_MODEL", "gemini-2.5-pro")
+            model = os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
             
         print(f"LLM resolved -> provider={provider}, model={model}")
         return model

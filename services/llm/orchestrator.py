@@ -11,9 +11,9 @@ logger = logging.getLogger(__name__)
 # Phase 6: Centralized LLM Chain
 MODEL_CHAIN = [
     ("openai", "gpt-4o-mini"),
-    ("openrouter", "google/gemini-2.0-flash-exp:free"), 
-    ("openrouter", "meta-llama/llama-3.1-8b-instruct"),
-    ("openrouter", "mistralai/mistral-7b-instruct")
+    ("google", "gemini-2.5-flash"),
+    ("openrouter", "google/gemini-2.5-flash:free"), 
+    ("openrouter", "meta-llama/llama-3.1-8b-instruct")
 ]
 
 class LLMOrchestrator:
