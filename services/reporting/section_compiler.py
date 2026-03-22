@@ -205,7 +205,8 @@ class SectionCompiler:
 
     def _build_context(self, section: ReportSectionState) -> str:
         from services.reporting.context_builder import ContextBuilder
-        raw_context = ContextBuilder.build_context(section["section_id"], self.state)
+        cache_id = self.state.get("report_state", {}).get("context_cache_id")
+        raw_context = ContextBuilder.build_context(section["section_id"], self.state, use_cache=bool(cache_id))
         
         lines = []
         for k, v in raw_context.items():
@@ -246,13 +247,15 @@ class SectionCompiler:
         provider, model_name = self._resolve_safe_provider(phase, section_type)
         
         try:
+             cache_id = self.state.get("report_state", {}).get("context_cache_id")
              # 2. Attempt Generation
              content = generate_response(
                 prompt,
                 temperature=temperature,
                 provider=provider,
                 model=model_name,
-                system_prompt=system_prompt
+                system_prompt=system_prompt,
+                cache_id=cache_id
              )
              logger.info(f"[Hybrid] Phase={phase.value} | Provider={provider} | Model={model_name} | Status=SUCCESS")
              return content
@@ -281,12 +284,14 @@ class SectionCompiler:
                       self._check_cost_guardrail(fallback_provider)
                   
                   try:
+                       cache_id = self.state.get("report_state", {}).get("context_cache_id")
                        content = generate_response(
                             prompt,
                             temperature=temperature,
                             provider=fallback_provider,
                             model=fallback_model,
-                            system_prompt=system_prompt
+                            system_prompt=system_prompt,
+                            cache_id=cache_id
                        )
                        
                        # Record Warning

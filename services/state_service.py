@@ -67,6 +67,15 @@ def save_state_for_query(query: str, state: VRAState, user_id: str) -> int:
         db.close()
 
 
+def get_all_states() -> list[tuple[str, str, dict]]:
+    """Returns all workflow states as (query, user_id, state_dict) tuples."""
+    db = _get_db()
+    try:
+        rows = db.query(WorkflowState).all()
+        return [(r.query, r.user_id, copy.deepcopy(r.state)) for r in rows if isinstance(r.state, dict)]
+    finally:
+        db.close()
+
 def delete_state_for_query(query: str, user_id: str) -> bool:
     """Deletes a workflow state from the database."""
     db = _get_db()

@@ -75,6 +75,7 @@ class ReportState(TypedDict):
     created_at: str
     updated_at: str
     metrics: Dict[str, Any] # { "avg_revisions": 1.2, "generation_time_ms": ... }
+    context_cache_id: NotRequired[Optional[str]]
 
 class VRAState(TypedDict, total=False):
     query: str

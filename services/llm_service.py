@@ -33,7 +33,8 @@ def generate_response(
     model: Optional[str] = None, 
     temperature: float = 0.7, 
     system_prompt: str = "",
-    provider: str = DEFAULT_PROVIDER
+    provider: str = DEFAULT_PROVIDER,
+    cache_id: Optional[str] = None
 ) -> str:
     """
     Generates a text response from the LLM.
@@ -41,11 +42,65 @@ def generate_response(
     import time
     from openai import RateLimitError, APIError
 
-    client = get_client(provider)
-    
     # Resolve model if not provided
     if not model:
         model = LLMFactory.get_default_model(provider)
+
+    # --- GOOGLE NATIVE ROUTING & CACHING ---
+    if provider == "google":
+        import google.generativeai as genai
+        from google.api_core.exceptions import ResourceExhausted, RetryError
+        
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if not google_api_key or not google_api_key.strip():
+            logger.error("GOOGLE_API_KEY environment variable is missing or empty. Cannot initialize Google Generative AI.")
+            raise ValueError("GOOGLE_API_KEY environment variable is missing.")
+            
+        genai.configure(api_key=google_api_key)
+        gen_model = None
+        
+        if cache_id:
+            from google.generativeai import caching
+            try:
+                cache = caching.CachedContent.get(cache_id)
+                gen_model = genai.GenerativeModel.from_cached_content(cached_content=cache)
+                logger.info(f"Successfully loaded Gemini cache: {cache_id}")
+            except Exception as e:
+                logger.warning(f"Failed to load Gemini cache {cache_id}: {e}. Falling back to standard model.")
+                if system_prompt:
+                    gen_model = genai.GenerativeModel(model_name=model, system_instruction=system_prompt)
+                else:
+                    gen_model = genai.GenerativeModel(model_name=model)
+        else:
+            if system_prompt:
+                gen_model = genai.GenerativeModel(model_name=model, system_instruction=system_prompt)
+            else:
+                gen_model = genai.GenerativeModel(model_name=model)
+
+        generation_config = genai.types.GenerationConfig(temperature=temperature)
+        
+        max_retries_429 = 3
+        base_delay = 15
+        for attempt in range(max_retries_429 + 1):
+            try:
+                response = gen_model.generate_content(prompt, generation_config=generation_config)
+                if not response.text:
+                    raise LLMGenerationError("Google API returned empty response")
+                return response.text
+            except (ResourceExhausted, RetryError) as e:
+                if attempt < max_retries_429:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(f"Google Rate limit hit (429). Retrying in {delay}s... (Attempt {attempt+1}/{max_retries_429})")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"Google API Failed after retries: {e}", exc_info=True)
+                    raise LLMGenerationError(f"Google API Error (Rate Limit): {e}") from e
+            except Exception as e:
+                logger.error(f"Google API Failed: {e}", exc_info=True)
+                raise LLMGenerationError(f"Google API Error: {e}") from e
+
+    # --- STANDARD OPENAI-COMPATIBLE LOGIC ---
+    client = get_client(provider)
 
     messages = []
     if system_prompt:
@@ -87,16 +142,76 @@ def generate_json_response(
     model: Optional[str] = None, 
     temperature: float = 0.5, 
     system_prompt: str = "",
-    provider: str = DEFAULT_PROVIDER
+    provider: str = DEFAULT_PROVIDER,
+    cache_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Generates a JSON response. Enforces JSON mode.
     """
     content = ""
     try:
-        client = get_client(provider)
         if not model:
             model = LLMFactory.get_default_model(provider)
+
+        # --- GOOGLE NATIVE ROUTING & CACHING ---
+        if provider == "google":
+            import google.generativeai as genai
+            from google.api_core.exceptions import ResourceExhausted, RetryError
+            import time
+            
+            google_api_key = os.getenv("GOOGLE_API_KEY")
+            if not google_api_key or not google_api_key.strip():
+                logger.error("GOOGLE_API_KEY environment variable is missing or empty. Cannot initialize Google Generative AI.")
+                raise ValueError("GOOGLE_API_KEY environment variable is missing.")
+            
+            genai.configure(api_key=google_api_key)
+            gen_model = None
+            
+            if cache_id:
+                from google.generativeai import caching
+                try:
+                    cache = caching.CachedContent.get(cache_id)
+                    gen_model = genai.GenerativeModel.from_cached_content(cached_content=cache)
+                except Exception as e:
+                    logger.warning(f"Failed to load JSON Gemini cache {cache_id}: {e}.")
+                    if system_prompt:
+                        gen_model = genai.GenerativeModel(model_name=model, system_instruction=system_prompt)
+                    else:
+                        gen_model = genai.GenerativeModel(model_name=model)
+            else:
+                if system_prompt:
+                    gen_model = genai.GenerativeModel(model_name=model, system_instruction=system_prompt)
+                else:
+                    gen_model = genai.GenerativeModel(model_name=model)
+
+            generation_config = genai.types.GenerationConfig(
+                temperature=temperature,
+                response_mime_type="application/json"
+            )
+            
+            max_retries_429 = 3
+            base_delay = 15
+            for attempt in range(max_retries_429 + 1):
+                try:
+                    response = gen_model.generate_content(prompt, generation_config=generation_config)
+                    if not response.text:
+                        raise LLMGenerationError("Google JSON API returned empty response")
+                    content = response.text
+                    return json.loads(content)
+                except (ResourceExhausted, RetryError) as e:
+                    if attempt < max_retries_429:
+                        delay = base_delay * (2 ** attempt)
+                        logger.warning(f"Google JSON Rate limit hit (429). Retrying in {delay}s... (Attempt {attempt+1}/{max_retries_429})")
+                        time.sleep(delay)
+                    else:
+                        raise LLMGenerationError(f"Google JSON Rate Limit: {e}") from e
+                except json.JSONDecodeError as e:
+                    raise e # Caught by outer block
+                except Exception as e:
+                    raise LLMGenerationError(f"Google JSON Error: {e}") from e
+
+        # --- STANDARD OPENAI-COMPATIBLE LOGIC ---
+        client = get_client(provider)
 
         messages = []
         if system_prompt:

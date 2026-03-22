@@ -32,3 +32,4 @@ cachetools
 cryptography
 anyio
 argon2-cffi
+google-generativeai

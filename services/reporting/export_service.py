@@ -40,9 +40,8 @@ class ExportService:
         if not content:
             return ""
             
-        DANGEROUS_TAGS = r"(script|iframe|object|embed|style|link|meta)"
-        # Regex matches `<script...>`, `</script>`, etc.
-        pattern_str = r"<\/?(?:script|iframe|object|embed|style|link|meta)\b[^>]*>"
+        # Regex matches `<script...>`, `</script>`, and inline `onerror=` events.
+        pattern_str = r"<\/?(?:script|iframe|object|embed|style|link|meta)\b[^>]*>|on\w+\s*="
         pattern = re.compile(pattern_str, re.IGNORECASE)
         
         if pattern.search(content):

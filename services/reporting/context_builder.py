@@ -72,7 +72,58 @@ class ContextBuilder:
         return "\n".join(constraints) if constraints else "None."
 
     @staticmethod
-    def build_context(section_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
+    def build_static_context_for_cache(state: Dict[str, Any]) -> str:
+        """
+        Builds a comprehensive, dense string of all research data for Gemini Context Caching.
+        Since it's cached once, we don't need to slice it down by section.
+        """
+        parts = []
+        
+        query = state.get("query", "Unknown Topic")
+        parts.append(f"Research Topic: {query}\n")
+        
+        ga = state.get("global_analysis", {})
+        if ga:
+            parts.append("--- GLOBAL THEMES ---")
+            parts.append(str(ga.get("themes", "None")))
+            if "executive_summary" in ga:
+                parts.append("Executive Summary: " + str(ga.get("executive_summary", "None")))
+            parts.append("\n")
+                
+        papers = state.get("selected_papers", [])[:50] # Send up to 50 instead of 10
+        if papers:
+            parts.append("--- SOURCE LITERATURE ---")
+            for p in papers:
+                title = p.get('title', 'Unknown')
+                summary = state.get("paper_summaries", {}).get(p.get("paper_id"), p.get("abstract", ""))
+                if summary:
+                    parts.append(f"Paper: {title}\nAbstract/Summary: {summary}\n")
+            parts.append("\n")
+                    
+        citation_metrics = state.get("citation_metrics", {})
+        if citation_metrics:
+            parts.append("--- CITATION METRICS ---")
+            parts.append(str(citation_metrics))
+            parts.append("\n")
+            
+        gaps = state.get("research_gaps", [])
+        if gaps:
+            parts.append("--- RESEARCH GAPS ---")
+            for g in gaps:
+                parts.append(f"- {g.get('description', '')} ({g.get('rationale', '')})")
+            parts.append("\n")
+                
+        trends = state.get("concept_trends", {}).get("trends", {})
+        if trends:
+            parts.append("--- CONCEPT TRENDS ---")
+            for k, v in trends.items():
+                parts.append(f"- {k}: {v.get('status', 'Unknown')} (Growth: {v.get('growth_rate', 0)})")
+            parts.append("\n")
+            
+        return "\n".join(parts)
+
+    @staticmethod
+    def build_context(section_id: str, state: Dict[str, Any], use_cache: bool = False) -> Dict[str, Any]:
         
         # Audience Logic
         audience = state.get("audience", "industry")
@@ -113,34 +164,36 @@ class ContextBuilder:
         is_analysis = "analysis" in sec_type or "result" in sec_type or any(k in sec_title for k in ["graph", "trend", "gap", "hypothesis", "discussion"])
         is_conclusion = "conclusion" in sec_type or "future" in sec_type or "summary" in sec_title
 
-        # Papers & Summaries (Crucial for Lit/Method)
-        papers = state.get("selected_papers", [])[:10]
-        if papers and (is_intro or is_lit or is_method or not any([is_intro, is_lit, is_method, is_analysis, is_conclusion])):
-            paper_lines = []
-            for p in papers:
-                title = p.get('title', 'Unknown')
-                summary = state.get("paper_summaries", {}).get(p.get("paper_id"), p.get("abstract", ""))
-                if summary:
-                    paper_lines.append(f"- {title}: {summary}")
-            facts["literature_context"] = "\n".join(paper_lines)
-            
-        # Graph Analytics (Crucial for Analysis/Lit)
-        citation_metrics = state.get("citation_metrics", {})
-        if citation_metrics and (is_analysis or is_lit):
-            facts["citation_velocity_and_pagerank"] = str(citation_metrics)
+        # Facts are omitted if using Native Cache because the LLM already has the massive static context
+        if not use_cache:
+            # Papers & Summaries (Crucial for Lit/Method)
+            papers = state.get("selected_papers", [])[:10]
+            if papers and (is_intro or is_lit or is_method or not any([is_intro, is_lit, is_method, is_analysis, is_conclusion])):
+                paper_lines = []
+                for p in papers:
+                    title = p.get('title', 'Unknown')
+                    summary = state.get("paper_summaries", {}).get(p.get("paper_id"), p.get("abstract", ""))
+                    if summary:
+                        paper_lines.append(f"- {title}: {summary}")
+                facts["literature_context"] = "\n".join(paper_lines)
+                
+            # Graph Analytics (Crucial for Analysis/Lit)
+            citation_metrics = state.get("citation_metrics", {})
+            if citation_metrics and (is_analysis or is_lit):
+                facts["citation_velocity_and_pagerank"] = str(citation_metrics)
 
-        # Gaps (Crucial for Analysis/Conclusion/Intro)
-        gaps = state.get("research_gaps", [])
-        if gaps and (is_analysis or is_conclusion or is_intro):
-            gap_lines = [f"- {g.get('description', '')} ({g.get('rationale', '')})" for g in gaps[:5]]
-            facts["identified_gaps"] = "\n".join(gap_lines)
-            
-        # Trends (Crucial for Intro/Analysis)
-        trends = state.get("concept_trends", {}).get("trends", {})
-        if trends and (is_intro or is_analysis):
-            sorted_trends = sorted(trends.items(), key=lambda x: x[1].get("total_count", 0), reverse=True)[:10]
-            trend_lines = [f"- {k}: {v.get('status', 'Unknown')} (Growth: {v.get('growth_rate', 0)})" for k, v in sorted_trends]
-            facts["concept_trends"] = "\n".join(trend_lines)
+            # Gaps (Crucial for Analysis/Conclusion/Intro)
+            gaps = state.get("research_gaps", [])
+            if gaps and (is_analysis or is_conclusion or is_intro):
+                gap_lines = [f"- {g.get('description', '')} ({g.get('rationale', '')})" for g in gaps[:5]]
+                facts["identified_gaps"] = "\n".join(gap_lines)
+                
+            # Trends (Crucial for Intro/Analysis)
+            trends = state.get("concept_trends", {}).get("trends", {})
+            if trends and (is_intro or is_analysis):
+                sorted_trends = sorted(trends.items(), key=lambda x: x[1].get("total_count", 0), reverse=True)[:10]
+                trend_lines = [f"- {k}: {v.get('status', 'Unknown')} (Growth: {v.get('growth_rate', 0)})" for k, v in sorted_trends]
+                facts["concept_trends"] = "\n".join(trend_lines)
 
         # --- NEW LOGIC: Rolling Context Memory ---
         previous_summaries = []

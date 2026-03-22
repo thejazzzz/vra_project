@@ -138,7 +138,26 @@ class InteractiveReportingService:
         if rep_state["report_status"] == "planned":
             rep_state["report_status"] = "in_progress"
 
-        save_state_for_query(session_id, state, user_id) 
+        from services.llm.orchestrator import LLMOrchestrator
+        
+        try:
+            # Verify Cache Liveness if one is documented
+            if rep_state.get("context_cache_id"):
+                if not LLMOrchestrator.is_cache_valid(rep_state["context_cache_id"]):
+                    logger.warning(f"Context Cache expired or invalid. Clearing ID...")
+                    rep_state["context_cache_id"] = None
+
+            # Initialize Context Cache if missing or just cleared
+            if not rep_state.get("context_cache_id"):
+                logger.info(f"Initializing Context Cache for session {session_id}...")
+                cache_id = LLMOrchestrator.create_context_cache(state)
+                if cache_id:
+                    rep_state["context_cache_id"] = cache_id
+        except Exception as e:
+            logger.error(f"Cache validity check or creation failed for session {session_id}: {e}", exc_info=True)
+            # Allow execution to continue without cache
+
+        save_state_for_query(session_id, state, user_id)
 
         try:
             # 6. Call Compiler (Sync)
@@ -246,6 +265,33 @@ class InteractiveReportingService:
         return target_section
 
     @staticmethod
+    def cleanup_abandoned_sessions():
+        """
+        Scans all sessions for abandoned or failed statuses and deletes their context caches.
+        Can be run on a schedule or background task.
+        """
+        from services.state_service import get_all_states, save_state_for_query
+        from services.llm.orchestrator import LLMOrchestrator
+        
+        try:
+            states = get_all_states()
+            for session_id, user_id, state in states:
+                rep_state = state.get("report_state", {})
+                status = rep_state.get("report_status")
+                cache_id = rep_state.get("context_cache_id")
+                
+                if cache_id and status in ["failed", "error"]:
+                    logger.info(f"Cleanup: Found abandoned/failed report {session_id} with cache {cache_id}. Deleting...")
+                    try:
+                        LLMOrchestrator.delete_context_cache(cache_id)
+                        rep_state["context_cache_id"] = None
+                        save_state_for_query(session_id, state, user_id)
+                    except Exception as e:
+                        logger.error(f"Cleanup: Failed to delete cache {cache_id} for session {session_id}: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Failed to execute cleanup_abandoned_sessions: {e}", exc_info=True)
+
+    @staticmethod
     def reset_section(session_id: str, user_id: str, section_id: str, force: bool = False) -> Dict[str, Any]:
         """
         Hard reset of a section. Admin/Safety hatch.
@@ -284,6 +330,17 @@ class InteractiveReportingService:
                 )
                 if not other_failed:
                     rep_state["report_status"] = "in_progress"
+                    
+                    # Cleanup Context Cache explicitly on report recovery
+                    if rep_state.get("context_cache_id"):
+                        from services.llm.orchestrator import LLMOrchestrator
+                        cache_id = rep_state["context_cache_id"]
+                        logger.info(f"Report recovered from failed state. Deleting stale context cache {cache_id}...")
+                        try:
+                            LLMOrchestrator.delete_context_cache(cache_id)
+                        except Exception as e:
+                            logger.error(f"Failed to delete context cache during reset: {e}", exc_info=True)
+                        rep_state["context_cache_id"] = None
 
         save_state_for_query(session_id, state, user_id)
         return target_section
@@ -313,6 +370,19 @@ class InteractiveReportingService:
         rep_state["report_status"] = "finalizing"
         rep_state["user_confirmed_finalize"] = True
         save_state_for_query(session_id, state, user_id)
+
+        # Cleanup Context Cache
+        if rep_state.get("context_cache_id"):
+            from services.llm.orchestrator import LLMOrchestrator
+            cache_id = rep_state["context_cache_id"]
+            logger.info("Report finalized. Deleting Google Context Cache...")
+            try:
+                LLMOrchestrator.delete_context_cache(cache_id)
+            except Exception as e:
+                logger.error(f"Failed to delete context cache {cache_id} during finalization: {e}", exc_info=True)
+            finally:
+                rep_state["context_cache_id"] = None
+                save_state_for_query(session_id, state, user_id)
 
         # Assemble (Virtual)
         rep_state["report_status"] = "completed"

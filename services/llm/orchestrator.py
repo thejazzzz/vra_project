@@ -1,5 +1,6 @@
 # File: services/llm/orchestrator.py
 import logging
+from typing import Optional
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 import requests
 import openai
@@ -73,7 +74,7 @@ class LLMOrchestrator:
             LLMGenerationError
         ))
     )
-    async def robust_generate_response(prompt: str, system_prompt: str = "", temperature: float = 0.3) -> str:
+    async def robust_generate_response(prompt: str, system_prompt: str = "", temperature: float = 0.3, cache_id: Optional[str] = None) -> str:
         """
         Executes an LLM call using the multi-model fallback chain and exponential backoff.
         """
@@ -94,7 +95,8 @@ class LLMOrchestrator:
                     system_prompt=system_prompt,
                     model=model,
                     temperature=temperature,
-                    provider=provider
+                    provider=provider,
+                    cache_id=cache_id
                 )
             except Exception as e:
                 logger.warning(f"LLMOrchestrator: Fallback triggered. {provider}/{model} failed: {e}")
@@ -119,3 +121,84 @@ class LLMOrchestrator:
         if last_exception:
             raise last_exception
         raise LLMGenerationError("All fallback models exhausted")
+
+    @staticmethod
+    def create_context_cache(state: dict) -> str:
+        """
+        Extracts static research context and pushes it to Google GenAI Caching.
+        """
+        import os
+        import datetime
+        from services.reporting.context_builder import ContextBuilder
+
+        provider = os.getenv("PRIMARY_PROVIDER", "openai").lower()
+        if provider != "google":
+            logger.info("Context caching skipped: Provider is not 'google'.")
+            return ""
+
+        try:
+            import google.generativeai as genai
+            from google.generativeai import caching
+            
+            genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+            
+            # Use specific caching model version based on primary model or default 1.5 pro
+            model_name = os.getenv("PRIMARY_MODEL", "models/gemini-1.5-pro-001")
+            if not model_name.startswith("models/"):
+                model_name = f"models/{model_name}"
+
+            static_content = ContextBuilder.build_static_context_for_cache(state)
+            
+            if not static_content.strip():
+                return ""
+
+            cache = caching.CachedContent.create(
+                model=model_name,
+                display_name=f"VRA_Cache_{state.get('session_id', 'unknown')}",
+                system_instruction="You are an expert research analyst compiling a comprehensive report.",
+                contents=[static_content],
+                ttl=datetime.timedelta(minutes=60),
+            )
+            logger.info(f"Successfully created Gemini Context Cache: {cache.name}")
+            return cache.name
+        except Exception as e:
+            logger.error(f"Failed to create Google Context Cache: {e}")
+            return ""
+
+    @staticmethod
+    def is_cache_valid(cache_id: str) -> bool:
+        """
+        Checks if the Gemini cache is still alive (e.g. hasn't expired its 60 min TTL).
+        """
+        if not cache_id:
+            return False
+            
+        try:
+            import os
+            import google.generativeai as genai
+            from google.generativeai import caching
+            
+            genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+            caching.CachedContent.get(cache_id)
+            return True
+        except Exception as e:
+            logger.warning(f"Cache {cache_id} validity check failed (likely expired): {e}")
+            return False
+
+    @staticmethod
+    def delete_context_cache(cache_id: str):
+        """
+        Deletes the Gemini Context Cache.
+        """
+        if not cache_id:
+            return
+            
+        try:
+            import google.generativeai as genai
+            from google.generativeai import caching
+            genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+            caching.CachedContent.get(cache_id).delete()
+            logger.info(f"Successfully deleted Gemini Context Cache: {cache_id}")
+        except Exception as e:
+            logger.error(f"Failed to delete Google Context Cache {cache_id}: {e}")
+
