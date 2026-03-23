@@ -363,7 +363,8 @@ class SectionPlanner:
             "updated_at": utc_now.isoformat(),
             "metrics": {
                 "generation_count": 0,
-                "total_revisions": 0
+                "total_revisions": 0,
+                "cloud_calls": 0
             }
         }
         

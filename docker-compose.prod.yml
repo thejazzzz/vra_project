@@ -72,7 +72,7 @@ services:
             VRA_HYBRID_MODE: ${VRA_HYBRID_MODE:-true}
             PRIMARY_PROVIDER: ${PRIMARY_PROVIDER:-openai}
             SECONDARY_PROVIDER: ${SECONDARY_PROVIDER:-openai}
-            MAX_CLOUD_CALLS: ${MAX_CLOUD_CALLS:-20}
+            MAX_CLOUD_CALLS: ${MAX_CLOUD_CALLS:-100}
             REPORT_PROVIDER: ${REPORT_PROVIDER:-openai}
 
             # Research

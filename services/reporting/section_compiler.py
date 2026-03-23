@@ -48,7 +48,7 @@ class SectionCompiler:
         self.secondary_model = os.getenv("SECONDARY_MODEL") or LLMFactory.get_default_model(self.secondary_provider)
         
         # Safety
-        self.max_cloud_calls = int(os.getenv("MAX_CLOUD_CALLS", "15"))
+        self.max_cloud_calls = int(os.getenv("MAX_CLOUD_CALLS", "100"))
         
         # Default State (Will be overridden by _resolve_provider)
         self.provider = self.primary_provider
@@ -96,14 +96,19 @@ class SectionCompiler:
         Circuit breaker for cloud costs.
         """
         if provider != LLMProvider.LOCAL:
-            current_calls = self.state.get("metrics", {}).get("cloud_calls", 0)
+            if "report_state" not in self.state:
+                self.state["report_state"] = {}
+            if "metrics" not in self.state["report_state"]:
+                self.state["report_state"]["metrics"] = {}
+
+            current_calls = self.state["report_state"]["metrics"].get("cloud_calls", 0)
+            
             if current_calls >= self.max_cloud_calls:
                  logger.warning(f"Cost Guardrail: Max cloud calls ({self.max_cloud_calls}) exceeded.")
                  raise CostLimitExceededError("Max cloud calls reached.")
             
             # Increment
-            if "metrics" not in self.state: self.state["metrics"] = {}
-            self.state["metrics"]["cloud_calls"] = current_calls + 1
+            self.state["report_state"]["metrics"]["cloud_calls"] = current_calls + 1
             
     def _resolve_safe_provider(self, phase: CompilationPhase, section_type: str = "") -> tuple[LLMProvider, str]:
         """
