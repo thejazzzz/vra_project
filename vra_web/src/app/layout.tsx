@@ -13,6 +13,7 @@ export const metadata: Metadata = {
 };
 
 import AuthGuard from "@/components/auth-guard";
+import { Analytics } from "@vercel/analytics/next";
 
 import { GlobalPaperDialog } from "@/components/global-paper-dialog";
 
@@ -35,6 +36,7 @@ export default function RootLayout({
                         <GlobalPaperDialog />
                     </Providers>
                 </ToastProvider>
+                <Analytics />
             </body>
         </html>
     );
