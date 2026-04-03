@@ -9,7 +9,9 @@ from services.graph_service import (
     compute_communities,
     compute_age_normalized,
     compute_entropy,
-    compute_velocity
+    compute_velocity,
+    compute_citation_metrics,
+    compute_co_citation_and_coupling
 )
 
 def test_betweenness_nonzero():
@@ -125,3 +127,38 @@ def test_betweenness_deterministic():
     
     # Must perfectly match run-to-run with a fixed seed inside the target
     assert b1 == b2
+
+
+def test_hits_computation():
+    G = nx.DiGraph()
+    # Hub points to many authorities
+    G.add_edges_from([("Hub1", "Auth1"), ("Hub1", "Auth2"), ("Hub2", "Auth1")])
+    # Give all nodes required attributes so compute_citation_metrics won't fail
+    for n in G.nodes:
+        G.nodes[n]["year"] = 2024
+        G.nodes[n]["citation_count"] = 10
+        
+    compute_citation_metrics(G, 2025)
+    
+    # Hub1 should have a higher hub score than Hub2
+    assert G.nodes["Hub1"].get("hub_score", 0) > G.nodes["Hub2"].get("hub_score", 0)
+    # Auth1 should have a higher authority score than Auth2
+    assert G.nodes["Auth1"].get("authority_score", 0) > G.nodes["Auth2"].get("authority_score", 0)
+
+
+def test_co_citation_and_coupling():
+    G = nx.DiGraph()
+    # A and B co-cited by C1
+    G.add_edges_from([("C1", "A"), ("C1", "B")])
+    # X and Y bib-coupled by citing Z
+    G.add_edges_from([("X", "Z"), ("Y", "Z")])
+    
+    compute_co_citation_and_coupling(G)
+    
+    assert G.has_edge("A", "B")
+    assert G.get_edge_data("A", "B").get("type") == "co_citation"
+    assert G.get_edge_data("A", "B").get("weight") == 1
+    
+    assert G.has_edge("X", "Y")
+    assert G.get_edge_data("X", "Y").get("type") == "bibliographic_coupling"
+    assert G.get_edge_data("X", "Y").get("weight") == 1

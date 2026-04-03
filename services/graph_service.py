@@ -601,6 +601,12 @@ def compute_citation_metrics(CG, current_year):
     betweenness = compute_betweenness(CG)
     communities = compute_communities(CG)
     
+    try:
+        hubs, authorities = nx.hits(CG, max_iter=200, tol=1e-08)
+    except Exception as e:
+        logger.warning(f"HITS computation failed: {e}")
+        hubs, authorities = {}, {}
+    
     for node in CG.nodes:
         pr_val = pagerank.get(node, 0.0)
         bw_val = betweenness.get(node, 0.0)
@@ -608,6 +614,8 @@ def compute_citation_metrics(CG, current_year):
         CG.nodes[node]["pagerank"] = pr_val
         CG.nodes[node]["betweenness"] = bw_val
         CG.nodes[node]["community"] = communities.get(node, -1)
+        CG.nodes[node]["hub_score"] = hubs.get(node, 0.0)
+        CG.nodes[node]["authority_score"] = authorities.get(node, 0.0)
         
         # Frontend Display Normalized Metrics
         CG.nodes[node]["display_size"] = max(3.0, pr_val * 200) # Base size 3, scaled by pagerank
@@ -621,6 +629,63 @@ def compute_citation_metrics(CG, current_year):
     for node in CG.nodes:
         v_val = CG.nodes[node].get("citation_velocity", 0.0)
         CG.nodes[node]["display_glow"] = math.log1p(v_val)
+
+    compute_co_citation_and_coupling(CG)
+
+
+def compute_co_citation_and_coupling(CG):
+    """
+    Adds co-citation and bibliographic coupling edges to the Citation Graph.
+    """
+    co_cited_edges = {}
+    bib_coupled_edges = {}
+    
+    nodes = list(CG.nodes)
+    for i in range(len(nodes)):
+        for j in range(i + 1, len(nodes)):
+            u, v = nodes[i], nodes[j]
+            # Co-citation: C -> u and C -> v (nodes citing both)
+            u_preds = set(CG.predecessors(u))
+            v_preds = set(CG.predecessors(v))
+            common_citing = u_preds.intersection(v_preds)
+            if common_citing:
+                co_cited_edges[(u, v)] = len(common_citing)
+                
+            # Bibliographic coupling: u -> C and v -> C (nodes cited by both)
+            u_succs = set(CG.successors(u))
+            v_succs = set(CG.successors(v))
+            common_cited = u_succs.intersection(v_succs)
+            if common_cited:
+                bib_coupled_edges[(u, v)] = len(common_cited)
+                
+    # Add these edges to CG
+    for (u, v), weight in co_cited_edges.items():
+        CG.add_edge(u, v, type="co_citation", weight=weight)
+        CG.add_edge(v, u, type="co_citation", weight=weight)
+        
+    for (u, v), weight in bib_coupled_edges.items():
+        CG.add_edge(u, v, type="bibliographic_coupling", weight=weight)
+        CG.add_edge(v, u, type="bibliographic_coupling", weight=weight)
+
+def find_citation_path(cg_data: Dict, source_id: str, target_id: str) -> List[str]:
+    """Finds the undirected shortest path between two papers in the citation graph."""
+    try:
+        def _normalise(d: Dict) -> Dict:
+            if "edges" in d and "links" not in d:
+                d = {**d, "links": d["edges"]}
+            return d
+        if not cg_data or "nodes" not in cg_data:
+            return []
+            
+        CG = nx.node_link_graph(_normalise(cg_data))
+        undirected_CG = CG.to_undirected()
+        path = nx.shortest_path(undirected_CG, source=source_id, target=target_id)
+        return path
+    except nx.NetworkXNoPath:
+        return []
+    except Exception as e:
+        logger.error(f"Failed to find citation path: {e}")
+        return []
 
 
 def enrich_knowledge_graph(kg_data: Dict, cg_data: Dict) -> Dict:
@@ -655,6 +720,8 @@ def enrich_knowledge_graph(kg_data: Dict, cg_data: Dict) -> Dict:
     betweenness = nx.get_node_attributes(G_cg, "betweenness")
     velocity = nx.get_node_attributes(G_cg, "citation_velocity")
     entropy = nx.get_node_attributes(G_cg, "citation_entropy")
+    hubs = nx.get_node_attributes(G_cg, "hub_score")
+    authorities = nx.get_node_attributes(G_cg, "authority_score")
 
     enriched = 0
     for node_id in G_kg.nodes:
@@ -664,6 +731,8 @@ def enrich_knowledge_graph(kg_data: Dict, cg_data: Dict) -> Dict:
             G_kg.nodes[node_id]["betweenness"] = betweenness.get(node_id, 0.0)
             G_kg.nodes[node_id]["citation_velocity"] = velocity.get(node_id, 0.0)
             G_kg.nodes[node_id]["citation_entropy"] = entropy.get(node_id, 0.0)
+            G_kg.nodes[node_id]["hub_score"] = hubs.get(node_id, 0.0)
+            G_kg.nodes[node_id]["authority_score"] = authorities.get(node_id, 0.0)
             enriched += 1
 
     logger.info("🔗 Cross-Graph: Enriched %d KG nodes", enriched)

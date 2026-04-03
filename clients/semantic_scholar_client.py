@@ -183,3 +183,76 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
         })
 
     return papers
+
+def get_papers_by_ids(paper_ids: List[str]) -> List[Dict]:
+    """
+    Fetch details for a list of Semantic Scholar paper IDs using the batch endpoint.
+    """
+    if not paper_ids:
+        return []
+
+    url = "https://api.semanticscholar.org/graph/v1/paper/batch"
+    params = {"fields": ",".join(S2_FIELDS)}
+    headers = {"x-api-key": API_KEY} if API_KEY else {}
+    payload = {"ids": paper_ids}
+    
+    _limiter.wait()
+    
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        try:
+            resp = requests.post(url, params=params, json=payload, headers=headers, timeout=20)
+            if resp.status_code == 429:
+                wait_time = 2 * (2 ** attempt) + random.uniform(0, 0.5)
+                logger.warning(f"⚠️ S2 API Batch Rate Limit (429). Retrying in {wait_time:.2f}s...")
+                time.sleep(wait_time)
+                _limiter.wait()
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        except Exception as e:
+            if attempt == max_retries:
+                logger.error(f"Semantic Scholar Batch Error (Final): {e}")
+                return []
+            time.sleep(1)
+            _limiter.wait()
+    else:
+        return []
+
+    results = [p for p in data if p is not None]  # API returns null for unfound IDs
+    papers = []
+
+    for p in results:
+        paper_id = p.get("paperId")
+        if not paper_id: continue
+
+        title = (p.get("title") or "").strip()
+        abstract = (p.get("abstract") or "").strip()
+        authors_raw = p.get("authors") or []
+        authors = [a.get("name").strip() for a in authors_raw if a and a.get("name")]
+
+        pdf_url = None
+        oa_pdf = p.get("openAccessPdf")
+        if oa_pdf and isinstance(oa_pdf, dict):
+             pdf_url = oa_pdf.get("url")
+        if not pdf_url:
+            ext_ids = p.get("externalIds") or {}
+            if ext_ids.get("ArXiv"):
+                pdf_url = f"https://arxiv.org/pdf/{ext_ids['ArXiv']}.pdf"
+
+        papers.append({
+            "source": "semantic_scholar",
+            "paper_id": paper_id,
+            "title": title,
+            "abstract": abstract,
+            "authors": authors,
+            "published": str(p.get("year")) if p.get("year") else None,
+            "pdf_url": pdf_url, 
+            "citation_count": p.get("citationCount", 0),
+            "reference_count": p.get("referenceCount", 0),
+            "references": p.get("references", []),
+            "metadata": p,
+        })
+
+    return papers

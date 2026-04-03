@@ -11,7 +11,7 @@ import threading
 
 from services.graph_persistence_service import load_graphs, save_graphs
 from services.graph_editing_service import apply_graph_edit
-from services.graph_service import recompute_analytics_for_saved_graph
+from services.graph_service import recompute_analytics_for_saved_graph, find_citation_path
 from services.memory_service import MemoryService
 from api.models.analysis_models import GraphEditRequest
 
@@ -137,6 +137,30 @@ def edit_graph(
     except Exception as e:
         logger.error(f"Graph edit error: {type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to edit graph")
+
+
+@router.get("/{query}/citation-path")
+def get_citation_path(
+    query: str,
+    source: str,
+    target: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Find the shortest path between two paper IDs in the citation graph."""
+    user_id = current_user.id
+    try:
+        graphs = load_graphs(query, user_id)
+        if not graphs or not graphs.get("citation_graph"):
+            raise HTTPException(status_code=404, detail="Citation graph not found")
+        
+        path = find_citation_path(graphs["citation_graph"], source, target)
+        return {"status": "success", "path": path}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to find citation path for session {query}: {e}")
+        raise HTTPException(status_code=500, detail="Error computing citation path")
 
 
 @router.get("/{query}")
