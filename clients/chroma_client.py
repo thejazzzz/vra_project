@@ -45,8 +45,9 @@ class _ChromaClient:
         # -----------------------
         if self._client is None:
             try:
-                logger.info("Initializing local persistent Chroma client...")
-                self._client = PersistentClient(path="./chroma_storage")
+                storage_path = os.getenv("CHROMA_STORAGE_PATH", "./chroma_storage")
+                logger.info(f"Initializing local persistent Chroma client at: {storage_path}")
+                self._client = PersistentClient(path=storage_path)
             except Exception as e:
                 logger.critical("FATAL: Cannot initialize Chroma client.", exc_info=True)
                 raise

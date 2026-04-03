@@ -1,0 +1,18 @@
+# File: render.yaml
+services:
+  - type: web
+    name: vra-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.11.0 # Or your version
+      - key: DATABASE_URL
+        sync: false # Set in Render Dashboard
+      - key: REDIS_URL
+        sync: false # Set in Render Dashboard
+      - key: CHROMA_STORAGE_PATH
+        value: "/tmp/chroma"
