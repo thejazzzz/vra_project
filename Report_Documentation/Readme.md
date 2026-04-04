@@ -74,7 +74,7 @@ The system supports multiple LLM providers. Set the following in `.env`:
 | Service | URL |
 |:---|:---|
 | API | http://localhost:8000 |
-| ChromaDB | http://localhost:8000 (default Chroma port) |
+| ChromaDB (local mode) | Embedded in-process (no separate port; configured via `CHROMA_STORAGE_PATH`) |
 | Postgres | localhost:5432 |
 
 ## Project Structure
@@ -86,30 +86,51 @@ vra_project/
 │   │                     #   reporting, graphs, graph_viewer, upload
 │   └── middleware/       # rate_limit.py (custom + slowapi)
 ├── agents/               # Autonomous research agents
-│   ├── arxiv_agent.py
-│   ├── data_acquisition_agent.py
-│   ├── graph_builder_agent.py
-│   ├── gap_analysis_agent.py
+│   ├── planner_agent.py           # Workflow initializer
+│   ├── arxiv_agent.py             # arXiv paper search
+│   ├── semantic_scholar_agent.py  # S2 search + citation snowballing
+│   ├── data_acquisition_agent.py  # Multi-source orchestration
+│   ├── data_merger_agent.py       # Canonical deduplication
+│   ├── graph_builder_agent.py     # Knowledge/Citation/Author graph construction
+│   ├── gap_analysis_agent.py      # Topological gap detection
 │   ├── hypothesis_generation_agent.py
 │   ├── paper_summarization_agent.py
 │   ├── reviewer_agent.py
 │   └── reporting_agent.py
 ├── services/
-│   ├── llm_factory.py         # Multi-provider LLM client factory
-│   ├── llm_service.py         # Core generate_response() with retry
+│   ├── llm_factory.py             # Multi-provider LLM client factory
+│   ├── llm_service.py             # Core generate_response() with retry
 │   ├── llm/
-│   │   └── orchestrator.py    # Sequential calls + multi-model fallback chain
-│   ├── reporting/             # Report compilation pipeline
-│   │   ├── section_compiler.py   # Hybrid draft→expand→refine engine
-│   │   ├── section_planner.py    # Section outline & dependency planning
-│   │   ├── reporting_service.py  # Stateful report orchestration
-│   │   └── export_service.py     # PDF/DOCX/LaTeX/MD export
-│   ├── graph_service.py       # Knowledge graph construction
-│   ├── research_service.py    # Paper retrieval & deduplication
-│   └── trend_analysis_service.py  # Temporal concept trend detection
+│   │   └── orchestrator.py        # Sequential calls + multi-model fallback chain
+│   ├── reporting/                 # Report compilation pipeline
+│   │   ├── section_compiler.py    # Hybrid draft→expand→refine engine
+│   │   ├── section_planner.py     # Section outline & dependency planning
+│   │   ├── reporting_service.py   # Stateful report orchestration
+│   │   └── export_service.py      # PDF/DOCX/LaTeX/MD export
+│   ├── graph_service.py           # Knowledge graph construction + HITS/co-citation
+│   ├── graph_analytics_service.py # Conflict detection, novelty, negative evidence
+│   ├── author_graph_service.py    # Author co-authorship network
+│   ├── concept_filter.py          # LLM-based concept quality gating
+│   ├── memory_service.py          # Cross-run edge memory for novelty decay
+│   ├── research_service.py        # Adaptive Query Expansion + deduplication
+│   ├── trend_analysis_service.py  # Temporal concept trend detection
+│   ├── progress_tracker.py        # Real-time workflow progress events
+│   └── observability/             # Metrics logging
+├── clients/              # External API client wrappers
+│   └── chroma_client.py           # ChromaDB factory (remote HTTP or local PersistentClient)
 ├── state/                # VRAState & ReportState schema definitions
-├── database/             # SQLAlchemy models & DB init
-├── tests/                # Unit & integration tests
+├── database/             # SQLAlchemy models & DB init (Neon/PostgreSQL)
 ├── migrations/           # Alembic DB migrations
+├── tests/                # Unit & integration tests
+├── render.yaml           # Render.com deployment configuration
 └── vra_web/              # Next.js frontend dashboard
 ```
+
+## Deployment
+
+| Service | Platform | Notes |
+|:---|:---|:---|
+| FastAPI + ChromaDB | Render.com | Deployed via `render.yaml`. ChromaDB at `/tmp/chroma`. |
+| Redis | Upstash | TLS connection (`rediss://`). Token blocklist, login lockout, rate limits. |
+| PostgreSQL | Neon | Serverless Postgres. |
+| Frontend | Vercel | Next.js auto-deployed from `vra_web/`. Vercel Analytics enabled. |

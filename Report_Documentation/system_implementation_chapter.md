@@ -20,6 +20,8 @@ The overarching architecture is highly modular and divided into distinct logical
 Rather than relying on a single monolithic LLM prompt, VRA distributes computational reasoning across specialized agents. This separation of concerns strictly bounds the context window for each agent, drastically reducing hallucinations (a known issue that the Reporting Agent's context boundaries seek to minimize).
 
 - **DataAcquisitionAgent & ArxivAgent**: Collaboratively orchestrate concurrent search queries across Semantic Scholar and arXiv, dynamically expanding initial user queries to ensure sufficient literature capture.
+- **SemanticScholarAgent**: Provides dual-mode access to Semantic Scholar — keyword-based query search and direct lookup-by-paper-ID. The `get_by_ids()` method enables **citation snowballing**, recursively fetching references to expand the literature pool beyond the initial query horizon.
+- **DataMergerAgent**: A dedicated post-acquisition deduplication agent. After all sources have reported, `DataMergerAgent.merge()` consolidates the full paper list into a unique, canonical corpus by resolving `canonical_id` conflicts and deep-merging metadata. It prefers the longest available abstract to maximize RAG context quality.
 - **GraphBuilderAgent**: Translates unstructured textual data concepts into structured network matrices (Knowledge Graphs, Citation Graphs).
 - **GapAnalysisAgent & HypothesisGenAgent**: Work sequentially. The Gap Analysis agent uses statistical topology to identify structural holes in the graph, which the Hypothesis Generation agent then translates into novel, testable future work.
 - **PaperSummarizationAgent**: Responsible for dense information extraction on a per-paper basis.
@@ -96,3 +98,40 @@ A **Cost Guardrail** (`MAX_CLOUD_CALLS`, default 15) limits cloud API consumptio
 - **Minimum Inter-Call Delay**: `LLM_MIN_DELAY` (default `12.0` s) enforces a minimum gap between calls, respecting Google AI Studio's 5 RPM free-tier limit.
 - **Model Chain Fallback**: On any provider failure, the orchestrator iterates through a `MODEL_CHAIN` list. If all models fail, `tenacity` applies exponential back-off (up to 5 attempts) before raising a terminal error.
 - **Rate Limit Detection**: HTTP 429 responses trigger an additional random 5–15 second sleep before switching to the next model.
+## 6. Advanced Graph Analytics (`GraphAnalyticsService`)
+
+Beyond the topological gap analysis, the `GraphAnalyticsService` provides a comprehensive suite of research-grade insights operating on the finalized Knowledge Graph:
+
+### 6.1 Conflict Detection
+Scans the directed graph for semantic contradictions using two strategies:
+- **Direct Contradiction**: Two edges on the same directed pair `(A→B)` with opposing polarity values (`+1` vs `-1`).
+- **Feedback Loop Conflict**: Detects circular causal edges `(A→B)` and `(B→A)` with opposing polarity, which indicates a scientifically inconsistent claim.
+Meta-edges, purely associative relationships, and hypothesis-tagged edges are excluded to prevent noise.
+
+### 6.2 Novelty Scoring
+Ranks edges by a composite novelty index:
+```
+Novelty = EdgeBetweenness × (1 / evidence_count+1) × confidence × causal_weight × longitudinal_decay
+```
+A `MemoryService` lookup applies a **longitudinal decay** factor — edges seen in previous research runs yield lower novelty, rewarding genuinely unusual connections. Contested edges receive an additional 80% penalty.
+
+### 6.3 Negative Evidence Detection
+Identifies research "dead ends": edges with `evidence_count ≥ 2` (well-studied) but consistently neutral or negative polarity — distinguishing "not studied" (gap) from "studied and found ineffective" (negative result).
+
+### 6.4 Citation Graph Metrics
+The `graph_service.py` implements additional network-science algorithms over the Citation Graph:
+- **HITS (Hubs & Authorities)**: Separates important *citing* hubs from highly cited *authorities*.
+- **Shortest Path**: Traces intellectual lineage and dependency chains between papers.
+- **Co-Citation & Bibliographic Coupling**: Groups papers by shared references or shared citations for clustering.
+- **Citation Snowballing**: Recursively follows reference chains to expand corpus coverage automatically.
+
+## 7. Deployment Architecture
+
+The system is deployed on a fully managed, zero-cost cloud infrastructure:
+
+| Service | Platform | Notes |
+|:---|:---|:---|
+| FastAPI + ChromaDB | Render.com | Python Web Service deployed from `render.yaml`. ChromaDB at `/tmp/chroma` (ephemeral). |
+| Redis | Upstash | Serverless TLS Redis (`rediss://`). Handles JWT blocklist, login lockouts, rate limiting. |
+| PostgreSQL | Neon | Serverless Postgres for all relational data (Users, Tasks, Papers). |
+| Frontend | Vercel | Next.js app auto-deployed from `vra_web/`. Includes Vercel Analytics. |

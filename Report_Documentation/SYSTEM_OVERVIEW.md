@@ -22,16 +22,19 @@ The system follows a layered architecture:
 
 The system uses specialized agents to handle distinct cognitive tasks.
 
-| Agent                       | Source File                             | Responsibilities                                                                                                           |
-| :-------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
-| **ArxivAgent**              | `agents/arxiv_agent.py`                 | Searches arXiv, sanitizes metadata, and normalizes output into a standard `Paper` schema.                                  |
-| **DataAcquisitionAgent**    | `agents/data_acquisition_agent.py`      | Orchestrates fetching from multiple sources (arXiv, Semantic Scholar) and handles broader queries.                         |
-| **GraphBuilderAgent**       | `agents/graph_builder_agent.py`         | Orchestrates the construction of Knowledge, Citation, and Author graphs. Integrates analysis output into graph structures. |
-| **GapAnalysisAgent**        | `agents/gap_analysis_agent.py`          | Analyzes graph topology to identify "Research Gaps" (e.g., under-explored concepts, structural holes).                     |
-| **HypothesisGenAgent**      | `agents/hypothesis_generation_agent.py` | Uses identified gaps to prompt an LLM to generate novel, testable research hypotheses.                                     |
-| **PaperSummarizationAgent** | `agents/paper_summarization_agent.py`   | Generates structured summaries for collected papers.                                                                       |
-| **ReviewerAgent**           | `agents/reviewer_agent.py`              | (Phase 4.1) Reviews generated hypotheses or reports for quality and rigorousness.                                          |
-| **ReportingAgent**          | `agents/reporting_agent.py`             | Compiles all research artifacts into a final comprehensive report.                                                         |
+| Agent                        | Source File                              | Responsibilities                                                                                                           |
+| :--------------------------- | :--------------------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
+| **PlannerAgent**             | `agents/planner_agent.py`                | Initializes the `VRAState` and decides the first workflow step (`awaiting_research_review`). Defers all subsequent transitions to the workflow engine to prevent accidental phase skipping. |
+| **ArxivAgent**               | `agents/arxiv_agent.py`                  | Searches arXiv, sanitizes metadata, and normalizes output into a standard `Paper` schema.                                  |
+| **SemanticScholarAgent**     | `agents/semantic_scholar_agent.py`       | Searches Semantic Scholar by query or by specific paper IDs. Normalizes results to the canonical `Paper` schema using `to_canonical_id`. Also supports `get_by_ids` for citation snowballing. |
+| **DataAcquisitionAgent**     | `agents/data_acquisition_agent.py`       | Orchestrates fetching from multiple sources (arXiv, Semantic Scholar) and handles broader queries.                         |
+| **DataMergerAgent**          | `agents/data_merger_agent.py`            | Post-acquisition deduplication agent. Merges papers from all sources into a single canonical list using `canonical_id`, deep-merging metadata and preferring the longest available abstract. |
+| **GraphBuilderAgent**        | `agents/graph_builder_agent.py`          | Orchestrates the construction of Knowledge, Citation, and Author graphs. Integrates analysis output into graph structures. |
+| **GapAnalysisAgent**         | `agents/gap_analysis_agent.py`           | Analyzes graph topology to identify "Research Gaps" (e.g., under-explored concepts, structural holes).                     |
+| **HypothesisGenAgent**       | `agents/hypothesis_generation_agent.py`  | Uses identified gaps to prompt an LLM to generate novel, testable research hypotheses.                                     |
+| **PaperSummarizationAgent**  | `agents/paper_summarization_agent.py`    | Generates structured summaries for collected papers.                                                                       |
+| **ReviewerAgent**            | `agents/reviewer_agent.py`               | Reviews generated hypotheses or reports for quality and rigorousness.                                                      |
+| **ReportingAgent**           | `agents/reporting_agent.py`              | Compiles all research artifacts into a final comprehensive report.                                                         |
 
 ---
 
@@ -105,6 +108,31 @@ Analyzes the temporal distribution of concepts.
 - **Logic**:
     - Calculates growth rates over defined windows (e.g., recent 3 years vs previous 3 years).
     - Classifies trends as **Emerging** (high growth), **Saturated** (high count, low growth), or **Declining**.
+
+### E. Advanced Graph Analytics (`graph_analytics_service.py`)
+
+The `GraphAnalyticsService` class provides a deeper layer of research-grade analysis on top of the Knowledge Graph, generating insights beyond simple gap detection:
+
+1.  **Conflict Detection**: Scans directed edges for semantic contradictions.
+    - **Direct Contradiction**: Two edges on the same `(source → target)` pair with opposing polarity (`+1` vs `-1`).
+    - **Feedback Loop Conflict**: Two strong causal edges in opposite directions (`A→B` and `B→A`) with opposing polarity.
+    - **Exclusions**: Meta-edges (`type == "meta"`), associative edges, and hypothesis edges are excluded to prevent noise.
+2.  **Gap Analysis (Missing Links)**: Identifies concept pairs that have many common neighbors but no direct edge, using a bibliographic coupling heuristic (`>2` shared neighbours required).
+3.  **Novelty Scoring**: Ranks knowledge graph edges by a composite novelty formula:
+    `Novelty = EdgeBetweenness × (1 / evidence_count+1) × confidence × causal_weight × decay`
+    - A longitudinal decay component (`MemoryService`) reduces the score for edges seen in previous research runs, rewarding truly unprecedented connections.
+    - A contestation penalty (×0.2) is applied to edges disputed in prior runs.
+4.  **Negative Evidence Detection**: Identifies edges that have been studied repeatedly (`evidence_count ≥ 2`) but consistently show neutral or negative polarity — flagging "dead end" research directions.
+5.  **Corpus Bias Metrics**: Reports the distribution of node types in the Knowledge Graph to expose potential domain coverage gaps.
+
+### F. Citation Graph Advanced Metrics (`graph_service.py`)
+
+The Citation Graph service implements several research-grade network analysis algorithms:
+
+- **HITS Algorithm (Hubs & Authorities)**: Identifies papers that are important *citing* hubs versus papers that are highly cited *authorities* in the field.
+- **Shortest Path Analysis**: Computes intellectual lineage and research dependency chains between any two papers.
+- **Co-Citation & Bibliographic Coupling**: Measures the similarity between papers based on shared references (co-citation) or being cited together (bibliographic coupling), enabling better paper clustering.
+- **Citation Snowballing**: Recursively fetches references and citations to automatically expand literature coverage beyond the initial search results.
 
 ---
 
@@ -186,7 +214,20 @@ While powerful, the system operates within specific constraints:
 
 ---
 
-## 8. Data Layout
+## 9. Deployment Stack
+
+The VRA system is deployed using the following free-tier, production-ready infrastructure:
+
+| Service         | Platform           | Notes                                                                    |
+| :-------------- | :----------------- | :----------------------------------------------------------------------- |
+| **FastAPI + ChromaDB** | **Render.com** | Docker-free Python Web Service. ChromaDB storage is ephemeral (`/tmp/chroma`). Deployed via `render.yaml`. |
+| **Redis**       | **Upstash**        | Serverless Redis (TLS connection via `rediss://`). Used for JWT blocklist, failed login tracking, and rate limiting. Eviction policy: `allkeys-lru`. |
+| **PostgreSQL**  | **Neon**           | Serverless Postgres. Stores all relational data (Users, Research Tasks, Papers). |
+| **Frontend**    | **Vercel**         | Next.js app automatically deployed from the `vra_web/` directory. Includes Vercel Analytics. |
+
+---
+
+## 10. Data Layout
 
 ### VRAState Object
 
@@ -201,5 +242,6 @@ The `state` dictionary passed through the workflow acts as the "Memory" of the s
 
 ### Persistence
 
-- **SQL (Papers)**: Stores metadata, raw text, and canonical IDs.
-- **Chroma (Embeddings)**: Stores vector embeddings of paper abstracts for RAG tasks (Retrieval Augmented Generation).
+- **SQL (Papers)**: Stores metadata, raw text, and canonical IDs via SQLAlchemy ORM. Migrations are managed by Alembic (`migrations/`).
+- **Chroma (Embeddings)**: Stores vector embeddings of paper abstracts for RAG tasks. The storage path is configurable via the `CHROMA_STORAGE_PATH` environment variable (defaults to `./chroma_storage`; set to `/tmp/chroma` on Render).
+- **Redis (Sessions)**: Stores JWT blocklist entries, failed login counters, and rate limiting state with per-key TTL expiry.
