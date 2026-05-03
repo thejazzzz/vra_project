@@ -69,3 +69,4 @@ project_tree.txt
 inspect_output.txt
 migration_err.txt
 !Report_Documentation/*.md
+.cursor

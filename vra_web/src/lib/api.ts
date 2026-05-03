@@ -234,6 +234,12 @@ export const plannerApi = {
             .post<GraphReviewResponse>("/planner/review-graph", payload)
             .then((res) => res.data),
 
+    reviewHypotheses: (payload: any): Promise<any> =>
+        defaultApi // Fast
+            .post<any>("/planner/review-hypotheses", payload)
+            .then((res) => res.data),
+
+
     continue: (sessionId: string): Promise<StatusResponse> =>
         defaultApi // Usually fast status update
             .post<StatusResponse>(

@@ -29,6 +29,7 @@ tests/
 # Frontend (deployed separately on Vercel)
 vra_web/
 node_modules/
+.cursor
 
 # Local data storage
 chroma/

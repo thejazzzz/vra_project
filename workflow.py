@@ -29,6 +29,7 @@ async def run_step(state: VRAState) -> VRAState:
             "awaiting_research_review", "awaiting_analysis",
             "awaiting_paper_summaries", "awaiting_graphs", "awaiting_graph_review",
             "awaiting_gap_analysis", "awaiting_hypothesis", "reviewing_hypotheses",
+            "awaiting_hypothesis_review",
             "awaiting_report", "awaiting_report_start", "awaiting_final_review",
             "completed", "failed", "error"
         }
@@ -116,7 +117,15 @@ async def run_step(state: VRAState) -> VRAState:
         # ---------------------------------------------------------
         if current == "reviewing_hypotheses":
             state = await asyncio.to_thread(reviewer_agent.run, state)
-            state["current_step"] = "awaiting_report"
+            state["current_step"] = "awaiting_hypothesis_review"
+            return state
+
+        # ---------------------------------------------------------
+        # STEP 4.8 — WAIT FOR HYPOTHESIS REVIEW
+        # ---------------------------------------------------------
+        if current == "awaiting_hypothesis_review":
+            if state.get("hypothesis_review_approved", False):
+                 state["current_step"] = "awaiting_report_start"
             return state
 
         # ---------------------------------------------------------
@@ -176,6 +185,7 @@ async def run_until_interaction(state: VRAState, save_callback: Callable[[VRASta
         if step in [
             "awaiting_research_review",
             "awaiting_graph_review",
+            "awaiting_hypothesis_review",
             "awaiting_report_start",
             "awaiting_final_review",
         ]:

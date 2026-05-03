@@ -136,6 +136,7 @@ export interface ResearchState {
     startResearch: (query: string) => Promise<boolean>;
     submitReview: (payload: ReviewPayload) => Promise<void>;
     submitGraphReview: (payload: GraphReviewPayload) => Promise<void>;
+    submitHypothesisReview: (payload: HypothesisReviewPayload) => Promise<void>;
     toggleSidebar: () => void;
 }
 
@@ -150,6 +151,13 @@ export interface GraphReviewPayload {
     query: string;
     approved: boolean;
     feedback?: string;
+    [key: string]: any;
+}
+
+export interface HypothesisReviewPayload {
+    query: string;
+    updated_hypotheses: Hypothesis[];
+    approved: boolean;
     [key: string]: any;
 }
 

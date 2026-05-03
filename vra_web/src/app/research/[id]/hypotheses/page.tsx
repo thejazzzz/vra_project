@@ -5,15 +5,67 @@ import { useResearchStore } from "@/lib/store";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, AlertCircle, Lightbulb } from "lucide-react";
+import { Check, AlertCircle, Lightbulb, Plus, Trash2 } from "lucide-react";
 import { PaperLink } from "@/components/ui/paper-link";
 import { extractPaperIds } from "@/lib/provenance-utils";
+import { useState, useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function HypothesesPage() {
-    const { hypotheses, reviews } = useResearchStore();
+    const { query, hypotheses, reviews, currentStep, submitHypothesisReview, isLoading } = useResearchStore();
+    const [localHypotheses, setLocalHypotheses] = useState<any[]>([]);
+    const hasInitialized = useRef(false);
+
+    useEffect(() => {
+        if (hypotheses && hypotheses.length > 0 && !hasInitialized.current) {
+            setLocalHypotheses(structuredClone(hypotheses));
+            hasInitialized.current = true;
+        }
+    }, [hypotheses]);
+
+    const isReviewMode = currentStep === "awaiting_hypothesis_review";
 
     const getReview = (id: string) =>
         reviews?.find((r) => r.hypothesis_id === id);
+
+    const handleUpdateStatement = (index: number, newStatement: string) => {
+        const updated = [...localHypotheses];
+        updated[index] = { ...updated[index], statement: newStatement };
+        setLocalHypotheses(updated);
+    };
+
+    const handleDelete = (index: number) => {
+        const updated = [...localHypotheses];
+        updated.splice(index, 1);
+        setLocalHypotheses(updated);
+    };
+
+    const handleAdd = () => {
+        setLocalHypotheses([
+            ...localHypotheses,
+            {
+                id: `HYP_${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+                statement: "",
+                novelty_score: 5,
+                testability_score: 5,
+                supporting_evidence: "Manually added by user.",
+            },
+        ]);
+    };
+
+    const handleApprove = async () => {
+        try {
+            await submitHypothesisReview({
+                query: query,
+                updated_hypotheses: localHypotheses,
+                approved: true
+            });
+        } catch (error) {
+            console.error("Failed to submit hypothesis review:", error);
+            // TODO: Show user-facing error notification
+        }
+    };
 
     if (!hypotheses || hypotheses.length === 0) {
         return (
@@ -32,7 +84,7 @@ export default function HypothesesPage() {
 
     return (
         <ScrollArea className="h-[calc(100vh-10rem)] pr-4">
-            <div className="space-y-6 animate-in fade-in">
+            <div className="space-y-6 animate-in fade-in pb-10">
                 <div className="flex items-center justify-between mb-6">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">
@@ -43,15 +95,30 @@ export default function HypothesesPage() {
                             trends.
                         </p>
                     </div>
+                    {isReviewMode && (
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" onClick={handleAdd}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Hypothesis
+                            </Button>
+                            <Button 
+                                onClick={handleApprove} 
+                                disabled={isLoading}
+                                className="bg-primary text-primary-foreground"
+                            >
+                                {isLoading ? "Saving..." : "Approve & Proceed"}
+                            </Button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="grid gap-6">
-                    {hypotheses.map((hyp) => {
+                    {localHypotheses.map((hyp, index) => {
                         const review = getReview(hyp.id);
                         return (
                             <Card
-                                key={hyp.id}
-                                className="p-6 border-l-4 border-l-primary/50 relative overflow-hidden"
+                                key={hyp.id || index}
+                                className="p-6 border-l-4 border-l-primary/50 relative overflow-hidden group"
                             >
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="flex items-center gap-2">
@@ -65,22 +132,44 @@ export default function HypothesesPage() {
                                             Novelty: {hyp.novelty_score}/10
                                         </Badge>
                                     </div>
-                                    {review && (
-                                        <Badge
-                                            variant={
-                                                review.score >= 7
-                                                    ? "default"
-                                                    : "destructive"
-                                            }
-                                        >
-                                            Review Score: {review.score}/10
-                                        </Badge>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                        {review && (
+                                            <Badge
+                                                variant={
+                                                    review.score >= 7
+                                                        ? "default"
+                                                        : "destructive"
+                                                }
+                                            >
+                                                Review Score: {review.score}/10
+                                            </Badge>
+                                        )}
+                                        {isReviewMode && (
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={() => handleDelete(index)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        )}
+                                    </div>
                                 </div>
 
-                                <h3 className="text-lg font-bold mb-3 italic">
-                                    "{hyp.statement}"
-                                </h3>
+                                {isReviewMode ? (
+                                    <Textarea
+                                        value={hyp.statement}
+                                        onChange={(e) => handleUpdateStatement(index, e.target.value)}
+                                        className="text-lg font-bold mb-3 italic resize-none"
+                                        rows={2}
+                                        placeholder="Enter hypothesis statement..."
+                                    />
+                                ) : (
+                                    <h3 className="text-lg font-bold mb-3 italic">
+                                        "{hyp.statement}"
+                                    </h3>
+                                )}
 
                                 <div className="text-sm text-muted-foreground mb-4 bg-muted/50 p-3 rounded-md border">
                                     <strong className="text-foreground">
@@ -103,7 +192,6 @@ export default function HypothesesPage() {
                                             );
                                         }
 
-                                        // Split text by IDs to preserve flow
                                         const escapedIds = ids.map((id) =>
                                             id.replace(
                                                 /[.*+?^${}()|[\]\\]/g,
@@ -118,7 +206,7 @@ export default function HypothesesPage() {
 
                                         return (
                                             <span>
-                                                {parts.map((part, i) => {
+                                                {parts.map((part: string, i: number) => {
                                                     if (ids.includes(part)) {
                                                         return (
                                                             <PaperLink

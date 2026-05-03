@@ -6,6 +6,7 @@ import {
     ReviewPayload,
     GraphReviewPayload,
     AddPaperPayload,
+    HypothesisReviewPayload,
 } from "../types"; // Switched to relative import
 
 /**
@@ -141,6 +142,13 @@ export const useResearchStore = create<ResearchState>((set, get) => {
         submitGraphReview: async (payload: GraphReviewPayload) => {
             await handleSubmission(
                 () => plannerApi.reviewGraph(payload),
+                payload.query,
+            );
+        },
+
+        submitHypothesisReview: async (payload: HypothesisReviewPayload) => {
+            await handleSubmission(
+                () => plannerApi.reviewHypotheses(payload),
                 payload.query,
             );
         },

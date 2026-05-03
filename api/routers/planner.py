@@ -360,6 +360,58 @@ async def review_graph(
     return {"state": state}
 
 
+class HypothesisReviewRequest(BaseModel):
+    query: str
+    updated_hypotheses: List[Dict] = []
+    approved: bool = True
+
+
+@router.post("/review-hypotheses")
+async def review_hypotheses(
+    payload: HypothesisReviewRequest, 
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    session_id = (payload.query or "").strip()
+    if not session_id:
+        raise HTTPException(400, "Session ID required")
+
+    user_id = current_user.id
+    
+    state = load_state_for_query(session_id, user_id)
+    if not state:
+         raise HTTPException(404, "State not found")
+
+    state["user_id"] = user_id 
+    
+    session_record = db.query(ResearchSession).filter(ResearchSession.session_id == session_id).first()
+    if not session_record or session_record.user_id != user_id:
+         raise HTTPException(403, "Forbidden")
+    
+    if state.get("current_step") != "awaiting_hypothesis_review":
+        logger.warning(f"Hypothesis review received but state is {state.get('current_step')}")
+
+    state["hypotheses"] = payload.updated_hypotheses
+    state["hypothesis_review_approved"] = payload.approved
+    state["current_step"] = "awaiting_report_start"
+
+    save_state_for_query(session_id, state, user_id)
+
+    log_action(
+        db,
+        user_id=user_id,
+        action="REVIEW_HYPOTHESES",
+        target_id=session_id,
+        payload={"approved": payload.approved, "count": len(payload.updated_hypotheses)}
+    )
+
+    from database.db import SessionLocal
+    background_tasks.add_task(run_background_workflow, session_id, state, user_id, SessionLocal)
+
+    return {"state": state}
+
+
 @router.get("/status/{session_id}")
 def get_status(
     session_id: str, 
