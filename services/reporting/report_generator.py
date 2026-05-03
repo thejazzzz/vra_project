@@ -7,7 +7,7 @@ from typing import Dict, Any, List
 
 from services.reporting.section_planner import SectionPlanner
 from services.reporting.context_builder import ContextBuilder
-from services.reporting.prompts import PROMPT_TEMPLATES, SYSTEM_PROMPT
+from services.reporting.prompts import PROMPT_TEMPLATES, SYSTEM_PROMPTS
 from services.reporting.appendix_generator import AppendixGenerator
 from services.llm_service import generate_response
 from services.llm_factory import LLMProvider, LLMFactory
@@ -99,7 +99,7 @@ class ReportGenerator:
         logger.info(f"Generating section {section_id} with {provider} ({model_name})...")
         content = generate_response(
             prompt=prompt,
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=SYSTEM_PROMPTS.get("draft", "You are an academic technical writer."),
             temperature=0.3, # Low temp for factual reporting
             provider=provider 
         )
