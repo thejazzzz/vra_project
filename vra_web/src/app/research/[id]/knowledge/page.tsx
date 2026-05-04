@@ -350,10 +350,14 @@ export default function KnowledgeGraphPage() {
         if (!currentStep) return;
         const gapSteps = [
             "gap_analysis",
+            "awaiting_gap_analysis",
             "review_gaps",
             "awaiting_gap_review",
+        ];
+        const hypothesisSteps = [
             "awaiting_hypothesis",
             "reviewing_hypotheses",
+            "awaiting_hypothesis_review"
         ];
         const reportSteps = [
             "awaiting_report_start",
@@ -361,7 +365,9 @@ export default function KnowledgeGraphPage() {
             "awaiting_final_review",
             "completed",
         ];
-        if (gapSteps.includes(currentStep)) {
+        if (hypothesisSteps.includes(currentStep)) {
+            router.push(`/research/${id}/hypotheses`);
+        } else if (gapSteps.includes(currentStep)) {
             router.push(`/research/${id}/gaps`);
         } else if (reportSteps.includes(currentStep)) {
             router.push(`/research/${id}/report`);

@@ -15,6 +15,7 @@ import {
     CheckCircle,
     RefreshCw,
     Play,
+    Lightbulb,
 } from "lucide-react";
 import Link from "next/link";
 import { PaperReviewDialog } from "@/components/paper-review-dialog";
@@ -42,6 +43,7 @@ export default function ResearchOverviewPage({
 
     const isPaperReviewNeeded = currentStep === "awaiting_research_review";
     const isGraphReviewNeeded = currentStep === "awaiting_graph_review";
+    const isHypothesisReviewNeeded = currentStep === "awaiting_hypothesis_review";
     const isReportReady = currentStep === "awaiting_report_start";
 
     const computeConfidence = () => {
@@ -56,48 +58,7 @@ export default function ResearchOverviewPage({
 
     const confidence = computeConfidence();
 
-    // Polling Logic: Check status every 4 seconds if in an intermediate step
-    const INTERMEDIATE_STEPS = [
-        "awaiting_analysis",
-        "awaiting_paper_summaries",
-        "awaiting_graphs",
-        "awaiting_gap_analysis",
-        "awaiting_hypothesis",
-        "reviewing_hypotheses",
-        "awaiting_report",
-    ];
-
-    const shouldPoll = INTERMEDIATE_STEPS.includes(currentStep || "");
-    const pollingRef = useRef<NodeJS.Timeout | null>(null);
-
-    useEffect(() => {
-        let isMounted = true;
-        
-        const poll = async () => {
-            if (!shouldPoll || !isMounted) return;
-            try {
-                await syncState(id);
-            } catch (err) {
-                console.error("Polling error (syncState):", err);
-            } finally {
-                if (isMounted && shouldPoll) {
-                    pollingRef.current = setTimeout(poll, 10000);
-                }
-            }
-        };
-
-        if (shouldPoll) {
-            // initial delay before first poll, or we can just call it immediately
-            pollingRef.current = setTimeout(poll, 10000);
-        } else {
-            if (pollingRef.current) clearTimeout(pollingRef.current);
-        }
-
-        return () => {
-            isMounted = false;
-            if (pollingRef.current) clearTimeout(pollingRef.current);
-        };
-    }, [shouldPoll, id, syncState]);
+    // Polling logic has been moved to layout.tsx to ensure all sub-pages update consistently.
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -160,6 +121,30 @@ export default function ResearchOverviewPage({
                         >
                             <Link href={`/research/${id}/knowledge`}>
                                 Review Graph
+                            </Link>
+                        </Button>
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {isHypothesisReviewNeeded && (
+                <Alert className="border-amber-500/50 bg-amber-500/10">
+                    <Lightbulb className="h-4 w-4 text-amber-500" />
+                    <AlertTitle className="text-amber-500 font-bold">
+                        Action Required: Review Hypotheses
+                    </AlertTitle>
+                    <AlertDescription className="flex justify-between items-center mt-2">
+                        <span>
+                            The agent has generated research hypotheses. Please
+                            review and approve them.
+                        </span>
+                        <Button
+                            size="sm"
+                            className="bg-amber-600 hover:bg-amber-700 text-white"
+                            asChild
+                        >
+                            <Link href={`/research/${id}/hypotheses`}>
+                                Review Hypotheses
                             </Link>
                         </Button>
                     </AlertDescription>

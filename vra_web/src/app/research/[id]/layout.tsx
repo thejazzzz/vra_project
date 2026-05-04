@@ -18,14 +18,49 @@ export default function ResearchLayout({
         useResearchStore();
     const queryId = decodeURIComponent(resolvedParams.id);
 
+    const INTERMEDIATE_STEPS = [
+        "awaiting_analysis",
+        "awaiting_paper_summaries",
+        "awaiting_graphs",
+        "awaiting_gap_analysis",
+        "awaiting_hypothesis",
+        "reviewing_hypotheses",
+        "awaiting_report",
+    ];
+
+    const shouldPoll = INTERMEDIATE_STEPS.includes(currentStep || "");
+
     useEffect(() => {
+        let isMounted = true;
+        let timeoutId: NodeJS.Timeout;
+
+        // Initial sync on mount or queryId change
         if (queryId) {
             syncState(queryId);
-            // Polling disabled per user request. Use manual refresh.
-            // const interval = setInterval(() => syncState(queryId), 5000);
-            // return () => clearInterval(interval);
         }
-    }, [queryId, syncState]);
+
+        const poll = async () => {
+            if (!shouldPoll || !isMounted) return;
+            try {
+                await syncState(queryId);
+            } catch (e) {
+                console.error("Polling error:", e);
+            } finally {
+                if (isMounted && shouldPoll) {
+                    timeoutId = setTimeout(poll, 10000);
+                }
+            }
+        };
+
+        if (shouldPoll) {
+            timeoutId = setTimeout(poll, 10000);
+        }
+
+        return () => {
+            isMounted = false;
+            clearTimeout(timeoutId);
+        };
+    }, [queryId, syncState, shouldPoll]);
 
     return (
         <div className="flex min-h-screen bg-background text-foreground">
