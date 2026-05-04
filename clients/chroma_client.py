@@ -83,6 +83,34 @@ class _ChromaClient:
                 metadatas=[metadata] if metadata else None
             )
 
+    def store_batch(self, keys: List[str], values: List[Any], metadatas: Optional[List[Dict]] = None):
+        if not keys:
+            return
+
+        # Validate inputs
+        if len(keys) != len(values):
+            raise ValueError(f"Length mismatch: keys({len(keys)}) != values({len(values)})")
+        
+        if metadatas is not None:
+            if len(metadatas) == 0:
+                metadatas = None
+            elif len(metadatas) != len(keys):
+                raise ValueError(f"Length mismatch: metadatas({len(metadatas)}) != keys({len(keys)})")
+
+        try:
+            self._collection.add(
+                ids=keys,
+                documents=[str(v) for v in values],
+                metadatas=metadatas
+            )
+        except Exception as e:
+            logger.error(f"Failed batch store, trying upsert. Error: {e}", exc_info=True)
+            self._collection.upsert(
+                ids=keys,
+                documents=[str(v) for v in values],
+                metadatas=metadatas
+            )
+
     def search(self, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
         try:
             # We request documents, metadatas, and distances

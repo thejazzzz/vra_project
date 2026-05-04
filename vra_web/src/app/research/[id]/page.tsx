@@ -71,16 +71,31 @@ export default function ResearchOverviewPage({
     const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
+        let isMounted = true;
+        
+        const poll = async () => {
+            if (!shouldPoll || !isMounted) return;
+            try {
+                await syncState(id);
+            } catch (err) {
+                console.error("Polling error (syncState):", err);
+            } finally {
+                if (isMounted && shouldPoll) {
+                    pollingRef.current = setTimeout(poll, 10000);
+                }
+            }
+        };
+
         if (shouldPoll) {
-            pollingRef.current = setInterval(() => {
-                syncState(id);
-            }, 4000);
+            // initial delay before first poll, or we can just call it immediately
+            pollingRef.current = setTimeout(poll, 10000);
         } else {
-            if (pollingRef.current) clearInterval(pollingRef.current);
+            if (pollingRef.current) clearTimeout(pollingRef.current);
         }
 
         return () => {
-            if (pollingRef.current) clearInterval(pollingRef.current);
+            isMounted = false;
+            if (pollingRef.current) clearTimeout(pollingRef.current);
         };
     }, [shouldPoll, id, syncState]);
 

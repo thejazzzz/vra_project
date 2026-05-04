@@ -625,13 +625,6 @@ async def _background_pdf_worker(paper_ids: Dict[int, str], papers_data: List[Di
             meta["text_source"] = "none"
 
     try:
-        # Match papers_data to DB IDs
-        # papers_data acts as the source for URLs
-        # We need to map properly. 
-        # Actually, let's just use the DB objects since we saved metadata there?
-        # But we need paper['pdf_url'] which might not be in DB yet if we only saved metadata.
-        # Let's rely on papers_data matching order or map by canonical_id.
-        
         # Create map: canonical_id -> paper_dict
         msg_map = {}
         for p in papers_data:
@@ -640,6 +633,10 @@ async def _background_pdf_worker(paper_ids: Dict[int, str], papers_data: List[Di
             if not cid:
                 cid = build_canonical_id(p.get("id"), p.get("title", ""), p.get("source"))
             msg_map[cid] = p
+
+        batch_chroma_ids = []
+        batch_contents = []
+        batch_metadatas = []
 
         for db_id, canonical_id in paper_ids.items():
             paper_dict = msg_map.get(canonical_id)
@@ -721,16 +718,37 @@ async def _background_pdf_worker(paper_ids: Dict[int, str], papers_data: List[Di
 
             if is_nonempty_text(content_to_embed):
                 chroma_id = f"paper-{db_obj.id}"
+                batch_chroma_ids.append(chroma_id)
+                batch_contents.append(content_to_embed[:8000])
+                batch_metadatas.append({"paper_db_id": db_obj.id, "canonical_id": db_obj.canonical_id})
+
+        # Process Batch Insertion (Robust Chunking & Retry Logic)
+        if batch_chroma_ids:
+            chunk_size = 50
+            for i in range(0, len(batch_chroma_ids), chunk_size):
+                c_ids = batch_chroma_ids[i:i + chunk_size]
+                c_contents = batch_contents[i:i + chunk_size]
+                c_metas = batch_metadatas[i:i + chunk_size]
+
                 try:
-                    await asyncio.to_thread(
-                         vector_client.store,
-                         chroma_id,
-                         content_to_embed[:8000], # Chunk limit
-                         {"paper_db_id": db_obj.id, "canonical_id": db_obj.canonical_id}
-                    )
+                    # 1. Try Batch Insertion if available
+                    if hasattr(vector_client, "store_batch"):
+                        await asyncio.to_thread(vector_client.store_batch, c_ids, c_contents, c_metas)
+                        logger.info(f"✅ Successfully batch embedded chunk of {len(c_ids)} papers.")
+                    else:
+                        # Fallback to individual store
+                        for j in range(len(c_ids)):
+                            await asyncio.to_thread(vector_client.store, c_ids[j], c_contents[j], c_metas[j])
+                        logger.info(f"✅ Successfully stored chunk of {len(c_ids)} papers individually.")
                 except Exception as ve:
-                    # Log but continue to ensure other papers get processed
-                    logger.error(f"⚠️ Embedding failed for {db_obj.canonical_id} (ID: {db_obj.id}): {ve}")
+                    logger.error(f"⚠️ Batch/Chunk embedding failed for range {i}-{i+len(c_ids)}: {ve}. Retrying individually...")
+                    # 2. Individual Retry Fallback
+                    for j in range(len(c_ids)):
+                        try:
+                            await asyncio.to_thread(vector_client.store, c_ids[j], c_contents[j], c_metas[j])
+                        except Exception as individual_error:
+                            logger.error(f"❌ Permanent embedding failure for paper {c_metas[j].get('paper_db_id')}: {individual_error}")
+                            failed_embedding.append(c_metas[j].get("canonical_id"))
 
     except Exception as e:
         logger.error(f"Background worker failed: {e}", exc_info=True)

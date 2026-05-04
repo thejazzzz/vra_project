@@ -51,12 +51,6 @@ export function ResearchProgress({
                 const phase = data.phase;
 
                 if (TERMINAL_PHASES.includes(phase)) {
-                    // Stop polling
-                    if (pollingRef.current) {
-                        clearInterval(pollingRef.current);
-                        pollingRef.current = null;
-                    }
-
                     if (phase === "FAILED") {
                         setError("Research task failed. Please try again.");
                         if (onError) onError(new Error("Task failed"));
@@ -67,17 +61,18 @@ export function ResearchProgress({
                             onComplete(phase, data);
                         }, 800);
                     }
+                } else {
+                    // Continue polling if not in terminal state
+                    pollingRef.current = setTimeout(poll, 5000);
                 }
             } catch (err) {
                 console.error("Polling error:", err);
-                // Don't stop polling immediately on transient network errors,
-                // but maybe track failure count? for now just log.
+                // Keep polling on transient network errors
+                if (isMounted) {
+                    pollingRef.current = setTimeout(poll, 5000);
+                }
             }
         };
-
-        // Start polling
-        // Adaptive interval: 1s usually.
-        pollingRef.current = setInterval(poll, 1000);
 
         // Immediate first check
         poll();
@@ -85,7 +80,7 @@ export function ResearchProgress({
         return () => {
             isMounted = false;
             if (pollingRef.current) {
-                clearInterval(pollingRef.current);
+                clearTimeout(pollingRef.current);
             }
         };
     }, [taskId, onComplete, onError]);
