@@ -8,12 +8,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, AlertCircle, Lightbulb, Plus, Trash2 } from "lucide-react";
 import { PaperLink } from "@/components/ui/paper-link";
 import { extractPaperIds } from "@/lib/provenance-utils";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
-export default function HypothesesPage() {
-    const { query, hypotheses, reviews, currentStep, submitHypothesisReview, isLoading } = useResearchStore();
+export default function HypothesesPage({
+    params,
+}: {
+    params: Promise<{ id: string }>;
+}) {
+    const resolvedParams = use(params);
+    const id = decodeURIComponent(resolvedParams.id);
+    const { hypotheses, reviews, currentStep, submitHypothesisReview, isLoading } = useResearchStore();
     const [localHypotheses, setLocalHypotheses] = useState<any[]>([]);
     const hasInitialized = useRef(false);
     const bottomRef = useRef<HTMLDivElement>(null);
@@ -61,7 +67,7 @@ export default function HypothesesPage() {
     const handleApprove = async () => {
         try {
             await submitHypothesisReview({
-                query: query,
+                query: id,
                 updated_hypotheses: localHypotheses,
                 approved: true
             });
@@ -74,7 +80,7 @@ export default function HypothesesPage() {
     const handleSaveDraft = async () => {
         try {
             await submitHypothesisReview({
-                query: query,
+                query: id,
                 updated_hypotheses: localHypotheses,
                 approved: false
             });
