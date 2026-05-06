@@ -24,7 +24,7 @@ def _check_cancellation(session_id: str) -> bool:
             session_record = db.query(ResearchSession).filter(ResearchSession.session_id == session_id).first()
             if session_record and session_record.status == SessionStatus.CANCELLING:
                 # Set to terminal cancelled state in DB to allow hard deletion later
-                session_record.status = SessionStatus.ERROR
+                session_record.status = SessionStatus.CANCELLED
                 db.commit()
                 return True
     except Exception as e:

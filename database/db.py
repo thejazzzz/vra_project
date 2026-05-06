@@ -56,7 +56,16 @@ def init_db():
             # 1. Ensure the column exists cleanly
             conn.execute(text("ALTER TABLE graphs ADD COLUMN IF NOT EXISTS session_id VARCHAR(255)"))
             
-            # 2. Idempotent constraint and index additions
+            # 2. Update sessionstatus enum (Postgres)
+            try:
+                # Note: ADD VALUE cannot be inside a transaction block in some Postgres versions, 
+                # but with IF NOT EXISTS it might be okay. We wrap in try/except just in case.
+                conn.execute(text("ALTER TYPE sessionstatus ADD VALUE IF NOT EXISTS 'CANCELLING'"))
+                conn.execute(text("ALTER TYPE sessionstatus ADD VALUE IF NOT EXISTS 'CANCELLED'"))
+            except Exception as e:
+                logger.warning(f"Enum migration skipped or failed (expected if already exists): {e}")
+
+            # 3. Idempotent constraint and index additions
             conn.execute(text("""
             DO $$
             BEGIN

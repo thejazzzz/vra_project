@@ -32,6 +32,7 @@ class SessionStatus(str, enum.Enum):
     ERROR = "ERROR"
     AWAITING_INPUT = "awaiting_input"
     CANCELLING = "CANCELLING"
+    CANCELLED = "CANCELLED"
 
 class User(Base):
     __tablename__ = "users"

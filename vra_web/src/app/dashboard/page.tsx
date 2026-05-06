@@ -131,7 +131,7 @@ export default function DashboardPage() {
                                                     variant={
                                                         session.status?.toLowerCase() === "running"
                                                             ? "default"
-                                                            : session.status?.toLowerCase() === "cancelling"
+                                                            : session.status?.toLowerCase() === "cancelling" || session.status?.toLowerCase() === "cancelled"
                                                             ? "destructive"
                                                             : "secondary"
                                                     }
