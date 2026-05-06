@@ -36,24 +36,44 @@ export default function DashboardPage() {
         fetchSessions();
     }, []);
 
-    const handleDelete = async (e: React.MouseEvent, sessionId: string) => {
-        e.preventDefault(); // Prevent link navigation
-        e.stopPropagation();
-
-        if (
-            window.confirm(
-                "Are you sure you want to permanently delete this research session?",
-            )
-        ) {
-            try {
-                await plannerApi.deleteSession(sessionId);
+    const performDelete = async (sessionId: string, force: boolean) => {
+        try {
+            const response = await plannerApi.deleteSession(sessionId, force);
+            
+            if (response.status === "cancelling") {
+                alert("Session cancellation requested. Background tasks are halting. You can force delete it now or wait a moment.");
+                setSessions((prev) => 
+                    prev.map((s) => s.session_id === sessionId ? { ...s, status: "CANCELLING" } : s)
+                );
+            } else {
                 setSessions((prev) =>
                     prev.filter((s) => s.session_id !== sessionId),
                 );
-            } catch (error) {
-                console.error("Failed to delete session", error);
-                alert("Failed to delete session. Please try again.");
             }
+        } catch (error: any) {
+            console.error("Failed to delete session", error);
+            const errorMsg = error.response?.data?.detail || "Failed to delete session.";
+            
+            if (error.response?.status === 409 || errorMsg.toLowerCase().includes("conflict") || errorMsg.toLowerCase().includes("running")) {
+                if (window.confirm(`${errorMsg}\n\nWould you like to FORCE delete this session anyway?`)) {
+                    performDelete(sessionId, true);
+                }
+            } else {
+                alert(`${errorMsg} Please try again.`);
+            }
+        }
+    };
+
+    const handleDelete = async (e: React.MouseEvent, sessionId: string, force: boolean = false) => {
+        e.preventDefault(); 
+        e.stopPropagation();
+
+        const message = force 
+            ? "Are you sure you want to FORCE delete this session? This action cannot be undone."
+            : "Are you sure you want to permanently delete this research session?";
+
+        if (window.confirm(message)) {
+            performDelete(sessionId, force);
         }
     };
 
@@ -109,13 +129,14 @@ export default function DashboardPage() {
                                             <div className="flex justify-between items-start">
                                                 <Badge
                                                     variant={
-                                                        session.status ===
-                                                        "running"
+                                                        session.status?.toLowerCase() === "running"
                                                             ? "default"
+                                                            : session.status?.toLowerCase() === "cancelling"
+                                                            ? "destructive"
                                                             : "secondary"
                                                     }
                                                 >
-                                                    {session.status}
+                                                    {session.status?.toLowerCase()}
                                                 </Badge>
                                                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                                                     <Clock className="h-3 w-3" />

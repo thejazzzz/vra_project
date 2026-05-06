@@ -250,9 +250,9 @@ export const plannerApi = {
     getSessions: (): Promise<any> =>
         defaultApi.get<any>("/planner/sessions").then((res) => res.data),
 
-    deleteSession: (sessionId: string): Promise<any> =>
+    deleteSession: (sessionId: string, force?: boolean): Promise<any> =>
         defaultApi
-            .delete<any>(`/planner/sessions/${encodeURIComponent(sessionId)}`)
+            .delete<any>(`/planner/sessions/${encodeURIComponent(sessionId)}${force ? "?force=true" : ""}`)
             .then((res) => res.data),
 };
 

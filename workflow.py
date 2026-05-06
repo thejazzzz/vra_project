@@ -12,10 +12,24 @@ from agents.reviewer_agent import reviewer_agent
 from services.analysis_service import run_analysis_task
 from services.trend_analysis_service import detect_concept_trends
 from database.models.workflow_state_model import WorkflowState
+from database.models.auth_models import ResearchSession, SessionStatus
 from database.db import SessionLocal
 
 logger = logging.getLogger(__name__)
 
+def _check_cancellation(session_id: str) -> bool:
+    """Synchronous helper to check for and handle session cancellation."""
+    try:
+        with SessionLocal() as db:
+            session_record = db.query(ResearchSession).filter(ResearchSession.session_id == session_id).first()
+            if session_record and session_record.status == SessionStatus.CANCELLING:
+                # Set to terminal cancelled state in DB to allow hard deletion later
+                session_record.status = SessionStatus.ERROR
+                db.commit()
+                return True
+    except Exception as e:
+        logger.error(f"Failed to check session cancellation status: {e}")
+    return False
 
 async def run_step(state: VRAState) -> VRAState:
     try:
@@ -180,6 +194,24 @@ async def run_until_interaction(state: VRAState, save_callback: Callable[[VRASta
     while steps_run < max_steps:
         step = state.get("current_step")
         logger.info(f"🔄 Workflow Loop Step {steps_run+1}: {step}")
+
+        # Check for cancellation in DB before each step
+        session_id = state.get("session_id")
+        if session_id:
+            is_cancelled = await asyncio.to_thread(_check_cancellation, session_id)
+            if is_cancelled:
+                logger.warning(f"Session {session_id} cancelled by user. Halting workflow.")
+                state["current_step"] = "failed"
+                state["error"] = "Cancelled by user"
+                
+                # Persist the failed/cancelled state
+                if save_callback:
+                    try:
+                        await save_callback(state)
+                    except Exception as e:
+                        logger.warning(f"Checkpoint save failed during cancellation: {e}")
+                
+                break
 
         # STOP: User Interaction Required
         if step in [

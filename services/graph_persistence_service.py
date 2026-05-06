@@ -68,3 +68,28 @@ def load_graphs(query_or_session: str, user_id: str) -> Optional[Dict]:
             "session_id": row.session_id,
             "query": row.query
         }
+
+def delete_graphs_for_session(session_id: str, user_id: str, db=None) -> bool:
+    """Deletes the graphs associated with a session. Uses provided DB session if available."""
+    
+    def _delete(session):
+        row = session.query(Graph).filter(
+            Graph.session_id == session_id,
+            Graph.user_id == user_id
+        ).first()
+        if row:
+            session.delete(row)
+            return True
+        return False
+
+    if db:
+        return _delete(db)
+    
+    with SessionLocal() as session:
+        try:
+            result = _delete(session)
+            session.commit()
+            return result
+        except Exception:
+            session.rollback()
+            raise

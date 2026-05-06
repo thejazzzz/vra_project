@@ -455,11 +455,12 @@ def get_user_sessions(current_user: User = Depends(get_current_user), db: Sessio
 @router.delete("/sessions/{session_id}")
 def delete_user_session(
     session_id: str,
+    force: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Delete a specific research session and its underlying workflow state.
+    Soft cancel a running session or hard delete an inactive session.
     """
     user_id = current_user.id
 
@@ -472,30 +473,26 @@ def delete_user_session(
     if session.user_id != user_id:
         raise HTTPException(status_code=403, detail="Forbidden: You do not own this session")
 
-    # Guard against deleting a running session
-    active_states = {"running", "in_progress", "validating", "finalizing", "awaiting_analysis", "awaiting_hypothesis", "reviewing_hypotheses"}
-    if session.status and session.status.lower() in active_states:
-        raise HTTPException(
-            status_code=409, 
-            detail="Conflict: Cannot delete a session while it is actively running."
-        )
+    # If it's running, we must soft cancel first
+    if session.status == SessionStatus.RUNNING:
+        if force:
+            raise HTTPException(
+                status_code=409, 
+                detail="Cannot force delete a running session. It must be cancelled first."
+            )
+        session.status = SessionStatus.CANCELLING
+        db.commit()
+        log_action(db, user_id=user_id, action="CANCEL_SESSION", target_id=session_id)
+        return {"status": "cancelling", "message": "Session cancellation requested. Background tasks will halt."}
 
-    # Clean up workflow state block to free memory
-    delete_state_for_query(session_id, user_id)
-    
-    # Delete from ResearchSession history
-    db.delete(session)
+    # Record audit log before hard delete (in case hard delete clears the session ID references)
+    log_action(db, user_id=user_id, action="HARD_DELETE_SESSION", target_id=session_id)
 
-
-    log_action(
-        db,
-        user_id=user_id,
-        action="DELETE_SESSION",
-        target_id=session_id,
-        payload={},
-    )
-    db.commit()
-
-
-    return {"status": "success", "message": "Session deleted"}
-
+    # Proceed to Hard Delete
+    from services.cleanup_service import hard_delete_session
+    try:
+        hard_delete_session(session_id, user_id, db)
+        return {"status": "success", "message": "Session permanently deleted"}
+    except Exception as e:
+        logger.error(f"Failed to hard delete session: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to completely delete session data")
