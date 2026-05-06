@@ -394,7 +394,9 @@ async def review_hypotheses(
 
     state["hypotheses"] = payload.updated_hypotheses
     state["hypothesis_review_approved"] = payload.approved
-    state["current_step"] = "awaiting_report_start"
+    
+    if payload.approved:
+        state["current_step"] = "awaiting_report_start"
 
     save_state_for_query(session_id, state, user_id)
 
@@ -406,8 +408,9 @@ async def review_hypotheses(
         payload={"approved": payload.approved, "count": len(payload.updated_hypotheses)}
     )
 
-    from database.db import SessionLocal
-    background_tasks.add_task(run_background_workflow, session_id, state, user_id, SessionLocal)
+    if payload.approved:
+        from database.db import SessionLocal
+        background_tasks.add_task(run_background_workflow, session_id, state, user_id, SessionLocal)
 
     return {"state": state}
 

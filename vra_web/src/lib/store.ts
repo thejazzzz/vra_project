@@ -28,14 +28,20 @@ export const useResearchStore = create<ResearchState>((set, get) => {
     const handleSubmission = async (
         apiCall: () => Promise<any>,
         query: string,
+        isProcessing: boolean = true
     ) => {
-        set({ currentStep: "processing", error: null });
+        if (isProcessing) {
+            set({ currentStep: "processing", error: null });
+        } else {
+            set({ isLoading: true, error: null });
+        }
+
         try {
             await apiCall();
             await get().syncState(query);
         } catch (err: any) {
             console.error("Submission Error:", err);
-            set({ error: err.message });
+            set({ error: err.message, isLoading: false });
         }
     };
 
@@ -150,6 +156,7 @@ export const useResearchStore = create<ResearchState>((set, get) => {
             await handleSubmission(
                 () => plannerApi.reviewHypotheses(payload),
                 payload.query,
+                payload.approved
             );
         },
 
