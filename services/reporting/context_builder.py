@@ -112,6 +112,13 @@ class ContextBuilder:
             for g in gaps:
                 parts.append(f"- {g.get('description', '')} ({g.get('rationale', '')})")
             parts.append("\n")
+
+        hypotheses = state.get("hypotheses", [])
+        if hypotheses:
+            parts.append("--- GENERATED HYPOTHESES ---")
+            for h in hypotheses:
+                parts.append(f"- {h.get('id', 'HYP')}: {h.get('statement', '')}")
+            parts.append("\n")
                 
         trends = state.get("concept_trends", {}).get("trends", {})
         if trends:
@@ -194,6 +201,12 @@ class ContextBuilder:
                 sorted_trends = sorted(trends.items(), key=lambda x: x[1].get("total_count", 0), reverse=True)[:10]
                 trend_lines = [f"- {k}: {v.get('status', 'Unknown')} (Growth: {v.get('growth_rate', 0)})" for k, v in sorted_trends]
                 facts["concept_trends"] = "\n".join(trend_lines)
+
+            # Hypotheses (Crucial for Analysis/Conclusion)
+            hypotheses = state.get("hypotheses", [])
+            if hypotheses and (is_analysis or is_conclusion):
+                hypo_lines = [f"- {h.get('id', 'HYP')}: {h.get('statement', '')}" for h in hypotheses]
+                facts["generated_hypotheses"] = "\n".join(hypo_lines)
 
         # --- NEW LOGIC: Rolling Context Memory ---
         previous_summaries = []

@@ -16,6 +16,7 @@ export default function HypothesesPage() {
     const { query, hypotheses, reviews, currentStep, submitHypothesisReview, isLoading } = useResearchStore();
     const [localHypotheses, setLocalHypotheses] = useState<any[]>([]);
     const hasInitialized = useRef(false);
+    const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (hypotheses && hypotheses.length > 0 && !hasInitialized.current) {
@@ -52,6 +53,9 @@ export default function HypothesesPage() {
                 supporting_evidence: "Manually added by user.",
             },
         ]);
+        setTimeout(() => {
+            bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
     };
 
     const handleApprove = async () => {
@@ -64,6 +68,18 @@ export default function HypothesesPage() {
         } catch (error) {
             console.error("Failed to submit hypothesis review:", error);
             // TODO: Show user-facing error notification
+        }
+    };
+
+    const handleSaveDraft = async () => {
+        try {
+            await submitHypothesisReview({
+                query: query,
+                updated_hypotheses: localHypotheses,
+                approved: false
+            });
+        } catch (error) {
+            console.error("Failed to save hypothesis draft:", error);
         }
     };
 
@@ -101,12 +117,15 @@ export default function HypothesesPage() {
                                 <Plus className="h-4 w-4 mr-2" />
                                 Add Hypothesis
                             </Button>
+                            <Button variant="outline" onClick={handleSaveDraft} disabled={isLoading}>
+                                {isLoading ? "Saving..." : "Save Draft"}
+                            </Button>
                             <Button 
                                 onClick={handleApprove} 
                                 disabled={isLoading}
-                                className="bg-primary text-primary-foreground"
+                                className="bg-primary text-primary-foreground ml-2"
                             >
-                                {isLoading ? "Saving..." : "Approve & Proceed"}
+                                {isLoading ? "Processing..." : "Approve & Proceed"}
                             </Button>
                         </div>
                     )}
@@ -145,14 +164,26 @@ export default function HypothesesPage() {
                                             </Badge>
                                         )}
                                         {isReviewMode && (
-                                            <Button 
-                                                variant="ghost" 
-                                                size="icon" 
-                                                className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                                onClick={() => handleDelete(index)}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
+                                            <div className="flex items-center gap-1">
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    className="text-green-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    onClick={handleSaveDraft}
+                                                    title="Save Draft"
+                                                >
+                                                    <Check className="h-4 w-4" />
+                                                </Button>
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    onClick={() => handleDelete(index)}
+                                                    title="Delete Hypothesis"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -161,6 +192,12 @@ export default function HypothesesPage() {
                                     <Textarea
                                         value={hyp.statement}
                                         onChange={(e) => handleUpdateStatement(index, e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleSaveDraft();
+                                            }
+                                        }}
                                         className="text-lg font-bold mb-3 italic resize-none"
                                         rows={2}
                                         placeholder="Enter hypothesis statement..."
@@ -252,6 +289,7 @@ export default function HypothesesPage() {
                             </Card>
                         );
                     })}
+                    <div ref={bottomRef} />
                 </div>
             </div>
         </ScrollArea>
