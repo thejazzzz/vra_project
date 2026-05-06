@@ -347,6 +347,7 @@ export default function KnowledgeGraphPage() {
     }, [isAdvancing, id, syncState]);
 
     useEffect(() => {
+        if (!isAdvancing) return;
         if (!currentStep) return;
         const gapSteps = [
             "gap_analysis",

@@ -30,7 +30,7 @@ class LLMFactory:
         base_url = kwargs.get("base_url")
         api_version = kwargs.get("api_version")
         azure_endpoint = kwargs.get("azure_endpoint")
-        timeout = kwargs.get("timeout", 45.0)
+        timeout = kwargs.get("timeout", 120.0)
         max_retries = kwargs.get("max_retries", 2)
 
         # 1. Resolve Provider Defaults if not explicitly passed

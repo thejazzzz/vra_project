@@ -34,7 +34,8 @@ def generate_response(
     temperature: float = 0.7, 
     system_prompt: str = "",
     provider: str = DEFAULT_PROVIDER,
-    cache_id: Optional[str] = None
+    cache_id: Optional[str] = None,
+    timeout: float = 300.0
 ) -> str:
     """
     Generates a text response from the LLM.
@@ -83,7 +84,11 @@ def generate_response(
         base_delay = 15
         for attempt in range(max_retries_429 + 1):
             try:
-                response = gen_model.generate_content(prompt, generation_config=generation_config)
+                response = gen_model.generate_content(
+                    prompt, 
+                    generation_config=generation_config,
+                    request_options={"timeout": timeout}
+                )
                 if not response.text:
                     raise LLMGenerationError("Google API returned empty response")
                 return response.text
@@ -116,7 +121,7 @@ def generate_response(
                 model=model,
                 messages=messages,
                 temperature=temperature,
-                timeout=60.0
+                timeout=timeout
             )
             if not response.choices or not response.choices[0].message.content:
                 logger.error("LLM returned empty response or no content")
@@ -143,7 +148,8 @@ def generate_json_response(
     temperature: float = 0.5, 
     system_prompt: str = "",
     provider: str = DEFAULT_PROVIDER,
-    cache_id: Optional[str] = None
+    cache_id: Optional[str] = None,
+    timeout: float = 300.0
 ) -> Dict[str, Any]:
     """
     Generates a JSON response. Enforces JSON mode.
@@ -193,7 +199,11 @@ def generate_json_response(
             base_delay = 15
             for attempt in range(max_retries_429 + 1):
                 try:
-                    response = gen_model.generate_content(prompt, generation_config=generation_config)
+                    response = gen_model.generate_content(
+                        prompt, 
+                        generation_config=generation_config,
+                        request_options={"timeout": timeout}
+                    )
                     if not response.text:
                         raise LLMGenerationError("Google JSON API returned empty response")
                     content = response.text
@@ -231,7 +241,7 @@ def generate_json_response(
                     messages=messages,
                     temperature=temperature,
                     response_format={"type": "json_object"},
-                    timeout=60.0
+                    timeout=timeout
                 )
                 
                 if not response.choices or not response.choices[0].message.content:
