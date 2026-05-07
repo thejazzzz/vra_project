@@ -63,7 +63,8 @@ export function HeroGraph() {
                     backgroundColor={bgCol}
                     nodeRelSize={4}
                     linkWidth={1.5}
-                    enableZoomPanInteraction={false}
+                    enableZoomInteraction={false}
+                    enablePanInteraction={false}
                     enableNodeDrag={true}
                     d3AlphaDecay={0.01}
                     d3VelocityDecay={0.2}
