@@ -39,6 +39,9 @@ def to_canonical_id(source: str, identifier: str) -> Optional[str]:
     if source in ("google_scholar", "gs"):
         return f"gs:{identifier}"
 
+    if source == "openalex":
+        return f"openalex:{identifier}"
+
     # ---- fallback ----
     return f"{source}:{identifier}"
 

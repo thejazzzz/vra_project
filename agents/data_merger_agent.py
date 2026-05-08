@@ -59,6 +59,9 @@ class DataMergerAgent:
             # Merge duplicate
             # ----------------------------
             existing = index[cid]
+            existing_title = existing.get("title", "Unknown")
+            
+            logger.debug(f"🔗 DataMerger → Merging duplicate: '{existing_title}' (Source: {paper.get('source')})")
 
             # Merge sources
             new_src = paper.get("source")
@@ -68,7 +71,6 @@ class DataMergerAgent:
                 )
 
             # Prefer longer / more detailed title
-            existing_title = existing.get("title") or ""
             paper_title = paper.get("title") or ""
             if len(paper_title) > len(existing_title):
                 existing["title"] = paper_title
@@ -88,6 +90,33 @@ class DataMergerAgent:
                 existing.get("metadata", {}),
                 paper.get("metadata", {})
             )
+
+            # Explicitly merge lists in metadata that deep_merge ignores (like references and concepts)
+            for list_key in ["references", "concepts"]:
+                existing_list = existing.get("metadata", {}).get(list_key) or []
+                new_list = paper.get("metadata", {}).get(list_key) or []
+                if new_list:
+                    if not existing_list:
+                        existing["metadata"][list_key] = new_list
+                    else:
+                        if isinstance(new_list[0], dict):
+                            # Merge dicts by paperId (e.g. references)
+                            existing_ids = {r.get("paperId") for r in existing_list if isinstance(r, dict) and r.get("paperId")}
+                            added_count = 0
+                            for r in new_list:
+                                if isinstance(r, dict) and r.get("paperId") not in existing_ids:
+                                    existing_list.append(r)
+                                    existing_ids.add(r.get("paperId"))
+                                    added_count += 1
+                            if added_count > 0:
+                                logger.debug(f"➕ Added {added_count} new {list_key} to '{existing_title}'")
+                            existing["metadata"][list_key] = existing_list
+                        else:
+                            # Merge strings/primitives (e.g. concepts)
+                            merged_set = set(existing_list + new_list)
+                            if len(merged_set) > len(existing_list):
+                                logger.debug(f"➕ Expanded {list_key} for '{existing_title}' to {len(merged_set)} items")
+                            existing["metadata"][list_key] = list(merged_set)
 
             # Prefer published date if missing
             if not existing.get("published") and paper.get("published"):

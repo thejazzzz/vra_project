@@ -5,6 +5,7 @@ import asyncio
 
 from agents.arxiv_agent import arxiv_agent
 from agents.semantic_scholar_agent import semantic_scholar_agent
+from agents.openalex_agent import openalex_agent
 from agents.data_merger_agent import data_merger_agent
 
 logger = logging.getLogger(__name__)
@@ -19,13 +20,15 @@ class DataAcquisitionAgent:
         logger.info(f"🌐 DataAcquisitionAgent → starting for '{query}'")
 
         # Call all sources concurrently
-        arxiv, s2 = await asyncio.gather(
+        arxiv, s2, openalex = await asyncio.gather(
             arxiv_agent.run(query, limit),
-            semantic_scholar_agent.run(query, limit)
+            semantic_scholar_agent.run(query, limit),
+            openalex_agent.run(query, limit)
         )
 
-        combined = arxiv + s2
+        combined = arxiv + s2 + openalex
 
+        logger.info(f"📥 Source Breakdown: arXiv={len(arxiv)}, S2={len(s2)}, OpenAlex={len(openalex)}")
         logger.info(f"📥 Total papers fetched (before merge): {len(combined)}")
 
         # Deduplicate + merge metadata
@@ -48,13 +51,22 @@ class DataAcquisitionAgent:
                     if rid: ref_ids.add(rid)
                     
             # Filter already fetched
-            existing_s2_ids = {p.get("paper_id") for p in merged if p.get("source") == "semantic_scholar"}
-            ref_ids = list(ref_ids - existing_s2_ids)
+            existing_ids = {p.get("paper_id") for p in merged}
+            ref_ids = list(ref_ids - existing_ids)
             
             # Fetch in batches if necessary, take top 10 to avoid massive pulls and rate limit issues
             ref_ids = ref_ids[:10]
             if ref_ids:
-                extra_papers = await semantic_scholar_agent.get_by_ids(ref_ids)
+                # Separate IDs for OpenAlex vs Semantic Scholar
+                oa_ids = [rid for rid in ref_ids if str(rid).startswith("W")]
+                s2_ids = [rid for rid in ref_ids if not str(rid).startswith("W")]
+                
+                extra_papers = []
+                if oa_ids:
+                    extra_papers.extend(await openalex_agent.get_by_ids(oa_ids))
+                if s2_ids:
+                    extra_papers.extend(await semantic_scholar_agent.get_by_ids(s2_ids))
+                    
                 if extra_papers:
                     logger.info(f"❄️ Snowballing retrieved {len(extra_papers)} additional linked papers.")
                     merged = data_merger_agent.merge(merged + extra_papers)

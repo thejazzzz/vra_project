@@ -498,22 +498,31 @@ def build_citation_graph(selected_papers: List[Dict]) -> Dict:
             logger.warning("Skipping paper missing canonical_id")
             continue
 
+        metadata = paper.get("metadata", {}) or {}
+        concepts = metadata.get("concepts", [])
+
         G.add_node(
             canonical_id,
             type="paper",
             title=paper.get("title", ""),
             year=paper.get("metadata", {}).get("year") or paper.get("year"),
-            citation_count=paper.get("metadata", {}).get("citationCount") or paper.get("citationCount") or 0
+            citation_count=paper.get("metadata", {}).get("citationCount") or paper.get("citationCount") or 0,
+            concepts=concepts[:5] if concepts else []
         )
 
-        metadata = paper.get("metadata", {}) or {}
-        s2_id = metadata.get("paperId") or paper.get("paper_id")
-
-        if s2_id:
-            s2_to_canonical[str(s2_id)] = canonical_id
+        # Map all known IDs for this paper to its canonical_id to resolve citations from any source
+        raw_id = paper.get("id") or paper.get("paper_id")
+        if raw_id:
+            s2_to_canonical[str(raw_id)] = canonical_id
+            
+        s2_meta_id = metadata.get("paperId")
+        if s2_meta_id:
+            s2_to_canonical[str(s2_meta_id)] = canonical_id
 
     # Add citation edges
     edge_count = 0
+    resolved_refs = 0
+    missing_refs = 0
     for paper in selected_papers:
         src_cid = paper.get("canonical_id")
         if not src_cid: continue
@@ -527,11 +536,16 @@ def build_citation_graph(selected_papers: List[Dict]) -> Dict:
             if not ref_s2_id: continue
 
             tgt_cid = s2_to_canonical.get(str(ref_s2_id))
-            if tgt_cid and tgt_cid != src_cid:
-                G.add_edge(src_cid, tgt_cid, type="citation")
-                edge_count += 1
+            if tgt_cid:
+                if tgt_cid != src_cid:
+                    G.add_edge(src_cid, tgt_cid, type="citation")
+                    edge_count += 1
+                resolved_refs += 1
+            else:
+                missing_refs += 1
 
-    logger.info("📎 Citation Graph: %d nodes, %d edges", G.number_of_nodes(), edge_count)
+    logger.info(f"📎 Citation Graph: Created {G.number_of_nodes()} nodes.")
+    logger.info(f"📎 Citation Graph: Found {edge_count} internal edges. (Resolved {resolved_refs} refs, {missing_refs} refs pointing outside the current pool)")
     
     import datetime
     current_year = datetime.datetime.now().year
