@@ -20,7 +20,7 @@ def search_arxiv(query: str, max_results: int = 5):
     }
 
     try:
-        response = requests.get(ARXIV_API_URL, params=params, timeout=10)
+        response = requests.get(ARXIV_API_URL, params=params, timeout=30)
         response.raise_for_status()
     except RequestException:
         logging.exception("arXiv API request failed")

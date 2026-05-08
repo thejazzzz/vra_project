@@ -30,14 +30,14 @@ S2_FIELDS = [
     "referenceCount",
     "citationCount",
     "influentialCitationCount",
-    "openAccessPdf",  # Crucial for direct downloads
+    "openAccessPdf",  
     "references.paperId",
     "references.title",
     "references.year",
-    # Citations can be voluminous; fetching just counts is safer for search list.
-    # We can fetch specific details in a separate 'details' call if needed.
-    # "citations.paperId", "citations.title" 
 ]
+
+# References are NOT available on the search endpoint and cause 403 Forbidden
+S2_SEARCH_FIELDS = [f for f in S2_FIELDS if not f.startswith("references")]
 
 API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 
@@ -75,7 +75,7 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
     params = {
         "query": query,
         "limit": limit,
-        "fields": ",".join(S2_FIELDS),
+        "fields": ",".join(S2_SEARCH_FIELDS),
     }
 
     headers = {"x-api-key": API_KEY} if API_KEY else {}

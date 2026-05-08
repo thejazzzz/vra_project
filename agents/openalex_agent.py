@@ -38,7 +38,7 @@ class OpenAlexAgent:
         """Convert OpenAlex work object to VRA VRAState paper format."""
         
         # Extract ID (e.g. https://openalex.org/W2741809807 -> W2741809807)
-        raw_id = paper.get("id", "")
+        raw_id = paper.get("id") or ""
         openalex_id = raw_id.split("/")[-1] if raw_id else ""
         
         if not openalex_id:
@@ -47,24 +47,26 @@ class OpenAlexAgent:
         # Parse authors
         authors = []
         for authorship in paper.get("authorships", []):
+            if not authorship: continue
             author = authorship.get("author", {})
-            if author.get("display_name"):
+            if author and author.get("display_name"):
                 authors.append({
-                    "authorId": author.get("id", "").split("/")[-1],
+                    "authorId": (author.get("id") or "").split("/")[-1],
                     "name": author.get("display_name", "")
                 })
             
         # Parse concepts
         concepts = []
         for concept in paper.get("concepts", []):
-            if concept.get("display_name"):
+            if concept and concept.get("display_name"):
                 concepts.append(concept.get("display_name", ""))
             
         # Parse references
         references = []
         ref_works = paper.get("referenced_works", [])
         for ref_id in ref_works:
-            references.append({"paperId": ref_id.split("/")[-1], "source": "openalex"})
+            if ref_id and isinstance(ref_id, str):
+                references.append({"paperId": ref_id.split("/")[-1], "source": "openalex"})
             
         title = paper.get("display_name") or "Untitled Paper"
         summary = openalex_client.parse_abstract(paper.get("abstract_inverted_index"))
