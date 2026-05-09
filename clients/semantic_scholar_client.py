@@ -11,6 +11,8 @@ from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+from utils.global_rate_limiter import wait_global_rps
+
 # -----------------------------------------------------------------------------
 # CONFIGURATION
 # -----------------------------------------------------------------------------
@@ -42,7 +44,7 @@ S2_SEARCH_FIELDS = [f for f in S2_FIELDS if not f.startswith("references")]
 API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 
 # -----------------------------------------------------------------------------
-# RATE LIMITER (1 req / second)
+# RATE LIMITING (1 req / second global)
 # -----------------------------------------------------------------------------
 
 class RateLimiter:
@@ -62,6 +64,12 @@ class RateLimiter:
 
 # Global limiter instance
 _limiter = RateLimiter(requests_per_second=1.0) # Conservative 1.0 RPS (matches user req)
+
+def _s2_wait():
+    # Prefer global Redis-backed limiter to coordinate across processes/workers.
+    wait_global_rps("rate_limit:s2:graph:v1", requests_per_second=1.0)
+    # Fallback (or extra safety) within a single process.
+    _limiter.wait()
 
 # -----------------------------------------------------------------------------
 # CLIENT FUNCTIONS
@@ -84,7 +92,7 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
     base_backoff = 2
 
     # Enforce Rate Limit before request
-    _limiter.wait()
+    _s2_wait()
 
     for attempt in range(max_retries + 1):
         try:
@@ -116,7 +124,7 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
 
                 logger.warning(f"⚠️ S2 API Rate Limit (429). Retrying in {wait_time:.2f}s...")
                 time.sleep(wait_time)
-                _limiter.wait() # Reset local timer logic
+                _s2_wait()
                 continue
                 
             resp.raise_for_status()
@@ -129,7 +137,7 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
                 return []
             logger.warning(f"Semantic Scholar Error: {e}. Retrying...")
             time.sleep(1)
-            _limiter.wait()
+            _s2_wait()
             
         except Exception as e:
             logger.error(f"Unexpected error in S2 search: {e}", exc_info=True)
@@ -196,7 +204,7 @@ def get_papers_by_ids(paper_ids: List[str]) -> List[Dict]:
     headers = {"x-api-key": API_KEY} if API_KEY else {}
     payload = {"ids": paper_ids}
     
-    _limiter.wait()
+    _s2_wait()
     
     max_retries = 2
     for attempt in range(max_retries + 1):
@@ -206,7 +214,7 @@ def get_papers_by_ids(paper_ids: List[str]) -> List[Dict]:
                 wait_time = 2 * (2 ** attempt) + random.uniform(0, 0.5)
                 logger.warning(f"⚠️ S2 API Batch Rate Limit (429). Retrying in {wait_time:.2f}s...")
                 time.sleep(wait_time)
-                _limiter.wait()
+                _s2_wait()
                 continue
             resp.raise_for_status()
             data = resp.json()
@@ -216,7 +224,7 @@ def get_papers_by_ids(paper_ids: List[str]) -> List[Dict]:
                 logger.error(f"Semantic Scholar Batch Error (Final): {e}")
                 return []
             time.sleep(1)
-            _limiter.wait()
+            _s2_wait()
     else:
         return []
 

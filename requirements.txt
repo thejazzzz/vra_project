@@ -34,4 +34,4 @@ anyio
 argon2-cffi
 google-generativeai
 celery
-
+
